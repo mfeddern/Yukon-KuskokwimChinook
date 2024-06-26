@@ -1,0 +1,159 @@
+---
+title: "0_temperature_data_cleaning"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(lubridate)
+library(readr)
+```
+
+
+# Upper Yukon Temperature Data
+
+Data were received from Michael Folkes on 10/12/21. He provided a short script for merging metadata and data. He resent the files later in the afternoon and updated files are being used for this script. Checked that stationID is unique in metadata file: 20 sites.
+
+Comments from M. Folkes: "This is an import of the Yukon River water temperature data series produced by Al von Finster (Whitehorse, Yukon). This merges the yukon river water temperature data series with station meta data to then allow data grouping by additional variables. In particular, note the variable: station_seriesName, which aggregates stations of a common river reach where one station was decommissioned but is located close to the currently active station. The metadata also includes geographic coordinates, basin, subbasin, and subsubbasin groupings (as developed by the Water Survey of Canada)"
+
+```{r read in md and data}
+
+temp_md <- read_csv("data/station.metadata.csv")
+
+temp_md %>% distinct(stationID)
+temp_md
+
+temp_dat <- read_csv(file = "data/yukon_water_temperature_vonfinster.csv", comment = "#")
+
+temp_dat <- left_join(temp_dat, temp_md, by = "stationID")
+
+temp_dat <- temp_dat %>% 
+  mutate(datetime_gmt = as.POSIXct(datetime_gmt , tz="GMT"),
+         datetime_pst = with_tz(datetime_gmt, tzone = "America/Los_Angeles"),
+         sampleDate = as.Date(datetime_pst))
+
+temp_dat %>% select(datetime_gmt, datetime_pst)
+
+temp_dat %>% 
+  distinct(station_seriesName, stationID) %>% 
+  arrange(station_seriesName)
+```
+
+Plot data using the seriesName, which Michael indicates groups sites in same reaches to capture the longest time series. These sites have very consistent temperatures between years! 
+
+```{r eval = FALSE}
+temp_dat %>% distinct(station_seriesName)
+
+temp_dat %>% 
+  ggplot(aes(x = datetime_pst, y = temperature)) +
+  geom_line() +
+  facet_wrap(~station_seriesName)
+```
+
+Create a data frame of daily mean temperatures.
+
+```{r daily temperature data}
+temp_daily <- temp_dat %>% 
+  group_by(stationID, station_seriesName, sampleDate) %>% 
+  summarize(meanDT = mean(temperature, na.rm = TRUE),
+            minDT = min(temperature, na.rm = TRUE),
+            maxDT = max(temperature, na.rm = TRUE))
+```
+
+Check for overlapping time series -- looks like both sites at Blind Creek were collecting data in 2019.
+(Note: currently fixed by grouping on stationID and year in plot below, but will probably want to make one time series for each population/location prior to modeling.)
+
+
+Use complete to fill in missing dates as NA and plot.
+
+```{r plot of daily data}
+temp_daily %>%
+  complete(stationID, date = seq.Date(min(date), max(date), by = "day")) %>% 
+  mutate(year = year(date),
+         mo_day = format(date, "%m-%d"),
+         site_year = paste(stationID, year, sep = "_")) %>%
+  ggplot(aes(x = as.Date(mo_day, format = "%m-%d"), y = meanDT, color = year, group = site_year)) +
+  geom_line() +
+  scale_x_date(date_breaks = "1 months", date_labels = "%b", limits = c(as.Date("06-01", format = "%m-%d"), as.Date("09-30", format = "%m-%d"))) +
+  facet_wrap(~ station_seriesName, labeller = label_wrap_gen()) +
+  labs(x = "Date", y = "Mean Daily Temperature (°C)", color = "Year",
+       title = "Logger Data by Series and Year") +
+  scale_color_continuous(label = function(x) round(x, 0)) +
+  theme_bw() +
+  theme(legend.position = "bottom", legend.text = element_text(angle = 75), legend.text.align = 1)
+
+ggsave("output/Upper Yukon Daily Temperatures.jpeg", width = 8, height = 10)
+```
+
+Plot of just Pelly and Teslin rivers.
+
+```{r}
+med_temp_2sites <- temp_daily %>%
+  ungroup() %>% 
+  filter(station_seriesName %in% c("Teslin River above Hootalinqua", "Pelly River below Pelly Crossing")) %>% 
+  complete(stationID, date = seq.Date(min(date), max(date), by = "day")) %>% 
+  mutate(year = year(date),
+         mo_day = format(date, "%m-%d"),
+         site_year = paste(stationID, year, sep = "_")) %>%
+  group_by(station_seriesName, mo_day) %>% 
+  summarize(med_temp = median(meanDT)) %>% 
+  filter(!is.na(med_temp))
+
+med_temp_2sites %>% arrange(desc(med_temp))
+
+temp_daily %>%
+  filter(station_seriesName %in% c("Teslin River above Hootalinqua", "Pelly River below Pelly Crossing")) %>% 
+  distinct(year(date), station_seriesName) %>% 
+  count(station_seriesName)
+
+temp_daily %>%
+  filter(station_seriesName %in% c("Teslin River above Hootalinqua", "Pelly River below Pelly Crossing")) %>% 
+  complete(stationID, date = seq.Date(min(date), max(date), by = "day")) %>% 
+  mutate(year = year(date),
+         mo_day = format(date, "%m-%d"),
+         site_year = paste(stationID, year, sep = "_")) %>%
+  ggplot() +
+  geom_line(aes(x = as.Date(mo_day, format = "%m-%d"), y = meanDT, group = site_year), color = "gray") +
+  geom_line(data = med_temp_2sites, aes(as.Date(mo_day, format = "%m-%d"), y = med_temp)) +
+  scale_x_date(date_breaks = "1 months", date_labels = "%b", limits = c(as.Date("06-01", format = "%m-%d"), as.Date("9-30", format = "%m-%d"))) +
+  facet_wrap(~ station_seriesName, labeller = label_wrap_gen()) +
+  labs(x = "Date", y = "Mean Daily Temperature (°C)") +
+  theme_bw() +
+  theme(legend.position = "bottom", legend.text = element_text(angle = 75), legend.text.align = 1)
+
+ggsave("Pelly and Teslin Daily Temperatures.jpeg", width = 7.5, height = 5)
+```
+
+
+Plotting annual metrics over time as a figure to share with Debbie.
+
+```{r annual metrics figure}
+temp_daily %>% 
+  group_by(stationID, station_seriesName, year = year(date)) %>% 
+  filter(month(date) %in% 7) %>% 
+  summarize(sum_temp = mean(meanDT)) %>% 
+  ggplot(aes(x = year, y = sum_temp)) +
+  geom_line(aes(color = station_seriesName)) +
+  scale_x_continuous(breaks = c(2012, 2014, 2016, 2018, 2020))
+```
+
+Make site names consistent with other datasets and save.
+
+```{r save md and data}
+temp_md %>% 
+  rename(Waterbody_name = StationName, Latitude = latitude, Longitude = longitude, SiteID = stationID) %>% 
+  mutate(SourceName = "AlvonF", Parameter = "Temperature") %>%
+  select(SiteID, Waterbody_name, Parameter, Latitude, Longitude, SourceName) %>% 
+  saveRDS(., file = "data/final_data/AlvonF_md.rds")
+
+temp_daily %>% 
+  ungroup() %>% 
+  rename(SiteID = stationID) %>% 
+  select(-station_seriesName) %>% 
+  saveRDS(., file = "data/final_data/AlvonF_dat.rds")
+  
+```
+
+

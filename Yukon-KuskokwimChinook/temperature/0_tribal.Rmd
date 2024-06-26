@@ -1,0 +1,13 @@
+---
+title: "0_tribal"
+output: html_document
+date: '2022-03-08'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Pilgrim River from Ashley Dunker NSEDC
+
+Niukluk River from Susan Gray at Native Village of Council

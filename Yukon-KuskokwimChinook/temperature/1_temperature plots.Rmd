@@ -1,0 +1,421 @@
+---
+title: "1_temperature plots"
+output:   
+  html_document: 
+    df_print: paged
+    fig_width: 10
+    fig_height: 10
+    fig_caption: yes
+    code_folding: hide
+    toc: true
+    number_sections: true
+    toc_depth: 4
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+editor_options: 
+  chunk_output_type: inline
+date: '2022-04-05'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(ggpubr)
+library(tidyverse)
+library(lubridate)
+library(zoo)
+library(gridExtra)
+
+#load temperature data and md files, 'complete' dates here for plotting
+temp_md <- readRDS("data/final_data/combined_data/temp_md.rds")
+temp_dat <- readRDS("data/final_data/combined_data/temp_dat.rds")
+
+temp_plot <- left_join(temp_dat, temp_md %>% select(SiteID, Region, Waterbody_name, chinook_site)) %>% 
+  filter(chinook_site == 1) %>% 
+  group_by(SiteID, Region, Waterbody_name, sampleYear) %>% 
+  complete(sampleDate = as.Date(min(sampleDate):max(sampleDate), origin = "1970-01-01")) %>% 
+  filter(month(sampleDate) %in% 6:9)  %>% 
+  mutate(day = format(sampleDate, "%m-%d")) %>% 
+  ungroup()
+
+temp_mets <- temp_plot %>% 
+  filter(month(sampleDate) %in% 6:9, sampleYear > 2000) %>%
+  group_by(Region, SiteID, Waterbody_name, sampleYear) %>% 
+  mutate(ma_mean = rollapply(meanDT, 7, mean, align = 'center', fill = NA),
+         day_count = n()) %>%
+  filter(day_count/122 > 0.7) %>%  #% of complete days in June - Sept
+  summarize(Max7d_DAT = max(ma_mean, na.rm = TRUE)) 
+
+temp_week <- temp_plot %>%
+  mutate(week = week(sampleDate),
+         period = case_when(week < 30 ~ "early",
+                            TRUE ~ "late")) %>% 
+  group_by(Waterbody_name, period, sampleYear, week) %>% 
+  summarize(wk_meanDT = mean(meanDT),
+            wk_airDT = mean(airDT))  
+```
+
+
+Save temp_plot and temp_mets files for shiny app. This is in Megan's Chinook folder.
+
+```{r eval = FALSE}
+saveRDS(temp_plot, "W:/Github/AYK-Chinook/Output/Shiny/temp_plot.rds")
+saveRDS(temp_mets, "W:/Github/AYK-Chinook/Output/Shiny/temp_mets.rds")
+
+
+```
+
+# Figures for plotting temperature data
+
+## By region
+
+Figure of mean daily temperatures for all sites within a region, plotted for June - September and faceted by year. We could include this as an option in a shiny app where the user could select a region and see range of variability across sites. Or, possibly this type of figure is better to show during the introduction of stream temperature data.
+
+```{r}
+
+temp_plot %>%
+  filter(Region == "Yukon (Canada)") %>% 
+  ggplot(aes(x = as.Date(day, format = "%m-%d"),  y = meanDT, col = SiteID)) + 
+  geom_line(alpha=0.7) +
+  scale_x_date(date_labels = "%b") +
+  facet_wrap(~sampleYear) +
+  scale_size(range = c(2, 2), limits = c(0.5, 1.5)) +
+  theme(legend.position = "") +
+  labs(x = "Date", y = "Daily Average Temperture (°C)", title = "Yukon (Canada)")
+
+```
+
+Figure of annual maximum of rolling 7-day mean of mean daily temperatures for all sites within a region. I filtered to only include site-years with 70% of days in the June - September window, which gives us 311 data points.
+
+This is a pretty common metric, basically a maximum weekly temperature. Vanessa's paper used the maximum temperature over a 3-day period, which, when converted to an annual statistic is the annual maximum max daily temperature. We have some sites without maximum daily temperatures, but not too many. We could show that as well, but that is a very short term maximum temperature so it seems less clear that there would be exposure to adult salmon. 
+
+
+```{r}
+
+temp_mets %>% 
+  ggplot(aes(x = sampleYear, y = Max7d_DAT, color = SiteID)) +
+  geom_line() +
+  geom_point() +
+  geom_hline(aes(yintercept = 18), linetype = 2) +
+  facet_wrap(~Region) +
+  theme(legend.position = "") +
+  labs(x = "Year", y = "Maximum Weekly Temperature (°C)")
+
+
+```
+
+
+
+## By site
+
+These types of plots seem more useful to have in the shiny app because they could be used to explore the data availability and stream temps for individual sites under consideration. Possibly the app could accommodate selection and plotting of up to ~5 sites at a time.
+
+```{r}
+
+temp_plot %>%
+  filter(grepl("Ibex", Waterbody_name)) %>% 
+  ggplot(aes(x = as.Date(day, format = "%m-%d"),  y = meanDT, col = SiteID)) + 
+  geom_line(alpha=0.7) +
+  scale_x_date(date_labels = "%b") +
+  facet_wrap(~sampleYear) +
+  scale_size(range = c(2, 2), limits = c(0.5, 1.5)) +
+  theme(legend.position = "") +
+  labs(x = "Date", y = "Daily Average Temperture (°C)", title = "Ibex R., Yukon (Canada)")
+
+temp_plot %>%
+  filter(grepl("Ibex|Takhini|Anson|Policeman|McIntyre", Waterbody_name)) %>% 
+  ggplot(aes(x = as.Date(day, format = "%m-%d"),  y = meanDT, col = Waterbody_name)) + 
+  geom_line(alpha=0.7) +
+  scale_x_date(date_labels = "%b") +
+  facet_wrap(~sampleYear) +
+  scale_size(range = c(2, 2), limits = c(0.5, 1.5)) +
+  theme(legend.position = "bottom") +
+  guides(color = guide_legend(nrow = 3, byrow = TRUE)) +
+  labs(x = "Date", y = "Daily Average Temperture (°C)", 
+       title = "Upper Lakes and Mainstem, Yukon (Canada)", color = "River Name: ")
+
+```
+
+Same idea, but for the annual maximum weekly temperture. 
+
+```{r}
+temp_mets %>% 
+  filter(grepl("Ibex", Waterbody_name)) %>% 
+  ggplot(aes(x = sampleYear, y = Max7d_DAT, color = SiteID)) +
+  geom_line() +
+  geom_point() +
+  geom_hline(aes(yintercept = 18), linetype = 2) +
+  theme(legend.position = "") +
+  labs(x = "Year", y = "Maximum Weekly Temperature (°C)", title = "Ibex R., Yukon (Canada)")
+
+temp_mets %>% 
+  filter(grepl("Ibex|Takhini|Anson|Policeman|McIntyre", Waterbody_name)) %>% 
+  ggplot(aes(x = sampleYear, y = Max7d_DAT, color = Waterbody_name)) +
+  geom_line() +
+  geom_point() +
+  geom_hline(aes(yintercept = 18), linetype = 2) +
+  scale_x_continuous(breaks = c(2012, 2014, 2016, 2018, 2020)) +
+  theme(legend.position = "bottom") +
+  labs(x = "Year", y = "Maximum Weekly Temperature (°C)",
+       title = "Upper Lakes and Mainstem, Yukon (Canada)", color = "River Name: ") +
+  guides(color = guide_legend(nrow = 3, byrow = TRUE)) 
+
+
+```
+
+Example possible compound plot. Select site(s) and then see the stream temperatures + MWMT plots together.
+
+```{r fig.height = 10, fig.width = 6}
+p1 <- temp_plot %>%
+  filter(grepl("Ibex|Takhini|Anson|Policeman|McIntyre", Waterbody_name)) %>% 
+  ggplot(aes(x = as.Date(day, format = "%m-%d"),  y = meanDT, col = Waterbody_name)) + 
+  geom_line(alpha=0.7) +
+  scale_x_date(date_labels = "%b") +
+  facet_wrap(~sampleYear) +
+  scale_size(range = c(2, 2), limits = c(0.5, 1.5)) +
+  theme(legend.position = "") +
+  # guides(color = guide_legend(nrow = 3, byrow = TRUE)) +
+  labs(x = "Date", y = "", 
+       title = "Daily Average Temperture (°C)", color = "River Name: ")
+
+p2 <- temp_mets %>% 
+  filter(grepl("Ibex|Takhini|Anson|Policeman|McIntyre", Waterbody_name)) %>% 
+  ggplot(aes(x = sampleYear, y = Max7d_DAT, color = Waterbody_name)) +
+  geom_line() +
+  geom_point() +
+  geom_hline(aes(yintercept = 18), linetype = 2) +
+  scale_x_continuous(breaks = c(2012, 2014, 2016, 2018, 2020)) +
+  theme(legend.position = "bottom") +
+  labs(x = "Year", y = "",
+       title = "Maximum Weekly Temperature (°C)", color = "River Name: ") +
+  guides(color = guide_legend(nrow = 3, byrow = TRUE)) 
+
+grid.arrange(p1, p2)
+```
+
+
+## With air temperatures
+
+We could create a separate tab or build up a more complicated output (e.g. grid arrange several plots) for one or more sites to also show the general relationship with air temperatures.
+
+Plots of the air and stream temperature time series together. One example of two sites to see how lake outflow affects stream temperatures.
+
+```{r}
+colors <- c("Stream Temperature" = "blue", "Air Temperature" = "black")
+
+temp_plot %>%
+  filter(grepl("Ibex", Waterbody_name)) %>% 
+  ggplot() + 
+  geom_line(aes(x = as.Date(day, format = "%m-%d"),  y = meanDT, color = "Stream Temperature")) +
+  geom_line(aes(x = as.Date(day, format = "%m-%d"),  y = airDT, color = "Air Temperature")) +
+  scale_x_date(date_labels = "%b") +
+  facet_wrap(~sampleYear) +
+  scale_size(range = c(2, 2), limits = c(0.5, 1.5)) +
+  theme(legend.position = "bottom") +
+  labs(x = "Date", y = "Daily Average Temperture (°C)", title = "Ibex R., Yukon (Canada)", color = "") +
+  scale_color_manual(values = colors)
+
+
+temp_plot %>%
+  filter(grepl("Ibex|Takhini", Waterbody_name), sampleYear %in% 2018:2020) %>% 
+  ggplot() + 
+  geom_line(aes(x = as.Date(day, format = "%m-%d"),  y = meanDT, color = "Stream Temperature")) +
+  geom_line(aes(x = as.Date(day, format = "%m-%d"),  y = airDT, color = "Air Temperature")) +
+  scale_x_date(date_labels = "%b") +
+  facet_grid(vars(sampleYear), vars(Waterbody_name)) +
+  scale_size(range = c(2, 2), limits = c(0.5, 1.5)) +
+  theme(legend.position = "bottom") +
+  labs(x = "Date", y = "Daily Average Temperture (°C)", color = "") +
+  scale_color_manual(values = colors)
+
+temp_plot %>%
+  filter(grepl("Ibex|Pelly|Tatchun River above", Waterbody_name), sampleYear %in% 2018:2020) %>% 
+  ggplot() + 
+  geom_line(aes(x = as.Date(day, format = "%m-%d"),  y = meanDT, color = "Stream Temperature")) +
+  geom_line(aes(x = as.Date(day, format = "%m-%d"),  y = airDT, color = "Air Temperature")) +
+  scale_x_date(date_labels = "%b") +
+  facet_grid(vars(sampleYear), vars(Waterbody_name)) +
+  scale_size(range = c(2, 2), limits = c(0.5, 1.5)) +
+  theme(legend.position = "bottom") +
+  labs(x = "Date", y = "Daily Average Temperture (°C)", color = "") +
+  scale_color_manual(values = colors)
+```
+
+```{r migration temps plot}
+temp_plot %>%
+  mutate(jd = format(sampleDate, "%j") %>% as.numeric()) %>% 
+  filter(grepl("Rapids|Pilot|Sonar|Bethel", Waterbody_name), meanDT >= 17) %>%
+  group_by(SiteID, Waterbody_name, sampleYear) %>% 
+  summarize(min_17 = min(jd, na.rm = TRUE)) %>% 
+  mutate(day = as.Date(paste(min_17, 2000), "%j %Y")) %>% 
+  ggplot(aes(x = day, y = Waterbody_name)) +
+  geom_boxplot() +
+  geom_point(color = "black", size = 2, shape = 1) +
+  scale_x_date(date_labels = "%m-%d") +
+  scale_y_discrete(limits = rev) +
+  theme_bw() +
+  theme(text = element_text(size = 18), axis.title = element_blank(),
+        plot.title = element_text(hjust = 0.95)) +
+  labs(title = "First Day Stream Temperatures Exceed 17°C")
+
+ggsave("output/Migration temps timing.jpeg", width = 8, height = 5, units = "in")
+
+
+temp_plot %>%
+  mutate(jd = format(sampleDate, "%j") %>% as.numeric()) %>% 
+  filter(grepl("Rapids|Pilot|Sonar|Bethel", Waterbody_name), meanDT >= 17) %>%
+  group_by(SiteID, Waterbody_name, sampleYear) %>% 
+  summarize(min_17 = min(jd, na.rm = TRUE)) %>% 
+  complete(Waterbody_name, sampleYear = 1984:2020) %>% 
+  mutate(day = as.Date(paste(min_17, 2000), "%j %Y")) %>% 
+  ggplot(aes(x = sampleYear, y = day, color = Waterbody_name)) +
+  geom_point(size = 2) +
+  geom_line() +
+  theme_bw() +
+  theme(text = element_text(size = 18), axis.title = element_blank(),
+        plot.title = element_text(hjust = 0.95), legend.position = "bottom") +
+  labs(title = "First Day Stream Temperatures Exceed 17°C", color = "") +
+  guides(color=guide_legend(nrow=2,byrow=TRUE))
+
+ggsave("output/Migration temps gt17 time series.jpeg", width = 8, height = 5, units = "in")
+
+
+temp_plot %>%
+  filter(grepl("Rapids|Pilot|Sonar|Bethel", Waterbody_name), sampleYear %in% 2012:2016,
+         month(sampleDate) %in% 6:8) %>% 
+  ggplot() + 
+  geom_line(aes(x = as.Date(day, format = "%m-%d"),  y = meanDT, color = Waterbody_name), show.legend = FALSE) +
+  geom_hline(aes(yintercept = 18), linetype = 2) +
+  # geom_line(aes(x = as.Date(day, format = "%m-%d"),  y = airDT, color = "Air Temperature")) +
+  scale_x_date(date_labels = "%b") +
+  facet_grid(vars(sampleYear), vars(Waterbody_name), labeller = labeller(Waterbody_name = label_wrap_gen(20))) +
+  scale_size(range = c(2, 2), limits = c(0.5, 1.5)) +
+  theme_bw() +
+  theme(legend.position = "bottom", text = element_text(size = 18)) +
+  labs(x = "Date", y = "Stream Temperature (°C)", color = "",
+       title = "Mean Daily Stream Temperatures 2012-2016") 
+
+ggsave("output/Migration temps 2012-16.jpeg", width = 14, height = 10, units = "in")
+
+
+
+```
+
+
+
+```{r spawning temps plot}
+temp_plot %>% 
+  filter(!grepl("Yukon|Kuskokwim", Waterbody_name), month(sampleDate) %in% 6:8, sampleYear %in% 2012:2016) %>% 
+  ggplot() + 
+  geom_line(aes(x = as.Date(day, format = "%m-%d"),  y = meanDT, group = SiteID, color = Region), show.legend = FALSE) +
+  geom_hline(aes(yintercept = 18), linetype = 2) +
+  # geom_line(aes(x = as.Date(day, format = "%m-%d"),  y = airDT, color = "Air Temperature")) +
+  facet_grid(vars(sampleYear), vars(Region)) +
+  theme_bw() +
+  theme(legend.position = "right", text = element_text(size = 18)) +
+  labs(x = "Date", y = "Stream Temperature (°C)", color = "") 
+
+
+ggsave("output/Spawning temps 2012-16.jpeg", width = 14, height = 10, units = "in")
+```
+
+
+
+```{r plot of warmest July temps}
+
+temp_plot %>% 
+  filter(month(sampleDate) == 7, sampleYear > 2000) %>% 
+  group_by(Region, SiteID, Waterbody_name, sampleYear) %>% 
+  summarize(max_July = max(meanDT)) %>% 
+  arrange(desc(max_July))
+
+temp_plot %>% 
+  filter(month(sampleDate) == 7, sampleYear > 2000) %>% 
+  group_by(Region, SiteID, Waterbody_name, sampleYear) %>% 
+  summarize(max_July = max(meanDT)) %>% 
+  filter(!is.na(max_July)) %>% 
+  ggplot(aes(x = max_July, y = fct_reorder(Waterbody_name, max_July), color = Region)) +
+  geom_point(size = 1.8) +
+  labs(x = "Maximum July Stream Temperature (°C)") +
+  theme(axis.title.y = element_blank(), legend.position = "bottom")
+
+ggsave("output/max July by site.jpeg", width = 14, height = 9, units = "in")
+```
+
+Alternatively, could show weekly regressions between daymet and stream temperatures. I went with weekly because this time step increases the strength of the air-stream temperature relationship and removes temporal autocorrelation in the residuals. I also colored by early and late summer since the relationships with air temperatures can vary a lot for some sites. 
+
+```{r}
+temp_week %>%
+  filter(grepl("Ibex", Waterbody_name)) %>% 
+  ggplot(aes(x = wk_airDT,  y = wk_meanDT, color = period)) + 
+  geom_point(show.legend = FALSE) +
+  geom_smooth(method = "lm") +
+  scale_size(range = c(2, 2), limits = c(0.5, 1.5)) +
+  theme(legend.position = "bottom") +
+  labs(x = "Date", y = "Daily Average Temperture (°C)", title = "Ibex R., Yukon (Canada)",
+       color = "Summer period: ") +
+  stat_cor(show.legend = FALSE) +
+  stat_regline_equation(show.legend = FALSE, label.x = 7) +
+  theme(text = element_text(size = 10))
+```
+
+Example showing several sites together, these are all within one of the genetic groups in Canada.
+
+```{r}
+temp_week %>%
+  filter(grepl("Ibex|Takhini|Anson|Policeman|McIntyre", Waterbody_name)) %>% 
+  ggplot(aes(x = wk_airDT,  y = wk_meanDT, color = period)) + 
+  geom_point(show.legend = FALSE) +
+  geom_smooth(method = "lm") +
+  facet_wrap(~Waterbody_name, labeller = labeller(Waterbody_name = label_wrap_gen(20))) +
+  scale_size(range = c(2, 2), limits = c(0.5, 1.5)) +
+  theme(legend.position = "bottom") +
+  labs(x = "Date", y = "Daily Average Temperture (°C)", title = "Upper Lakes and Mainstem, Yukon (Canada)", color = "Summer period:") +
+  stat_cor(show.legend = FALSE, aes(label = ..r.label..)) +
+  # stat_regline_equation(show.legend = FALSE, label.x.npc = 'left', label.y.npc = 'bottom') +
+  theme(text = element_text(size = 18))
+```
+
+Example of the Takhini below a huge lake and how different the relationship with air temperature is for different years.
+
+```{r}
+temp_plot %>%
+  mutate(period = case_when(week(sampleDate) < 30 ~ "early",
+                            TRUE ~ "late")) %>% 
+  filter(grepl("Takhini", Waterbody_name)) %>% 
+  ggplot(aes(x = airDT,  y = meanDT, color = period)) + 
+  geom_point(show.legend = FALSE) +
+  geom_smooth(method = "lm") +
+  facet_wrap(~sampleYear) +
+  scale_size(range = c(2, 2), limits = c(0.5, 1.5)) +
+  theme(legend.position = "bottom") +
+  labs(x = "Date", y = "Daily Average Temperture (°C)",
+       title = "Takhini R. below Kusawa Lake", color = "Summer period:") +
+  stat_cor(show.legend = FALSE) +
+  stat_regline_equation(show.legend = FALSE, label.x.npc = 'left', label.y.npc = 'bottom') +
+  theme(text = element_text(size = 10))
+```
+
+Example of several spawning sites across study area.
+
+
+```{r}
+temp_week %>%
+  filter(grepl("Chena R Nr|Salcha R Nr|Kogruk|Kwethluk|Mcquesten River below Klondike|Teslin River above", Waterbody_name)) %>% 
+  mutate(label = word(Waterbody_name)) %>% 
+  ggplot(aes(x = wk_airDT,  y = wk_meanDT)) + 
+  geom_point(show.legend = FALSE) +
+  geom_smooth(method = "lm") +
+  facet_wrap(~label, labeller = labeller(Waterbody_name = label_wrap_gen(20))) +
+  scale_size(range = c(2, 2), limits = c(0.5, 1.5)) +
+  theme(legend.position = "bottom") +
+  labs(x = "Air Temperature (°C)", y = "Stream Temperature (°C)", title = "Weekly Air-Stream Temperature Relationships", color = "Summer period:") +
+  stat_cor(show.legend = FALSE, aes(label = ..r.label..), size = 6) +
+  # stat_regline_equation(show.legend = FALSE, label.x.npc = 'left', label.y.npc = 'bottom') +
+  theme_bw() +
+  theme(text = element_text(size = 18))
+
+ggsave("output/weekly regressions 6 sites.jpeg", width = 7, height = 5, units = "in")
+```
+

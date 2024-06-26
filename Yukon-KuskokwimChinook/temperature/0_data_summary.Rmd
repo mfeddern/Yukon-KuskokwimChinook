@@ -1,0 +1,519 @@
+---
+title: "0_data_summary"
+output: 
+  html_document:
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# knitr::opts_knit$set(root.dir = '/tmp') #set to project directory
+
+library(lubridate)
+library(sf)
+# library(tmap)
+# library(tmaptools)
+library(zoo)
+library(tidyverse)
+library(dataRetrieval)
+
+```
+
+# Data sharing ideas
+
+Will want to reach out to experts in these regions and ask if we have all the most current temperature and discharge data. It would probably be best to start with web mapper that links to small shiny app with environmental data. This would make it pretty easy for someone to pan around to a region and locate sites and check basic metadata (source, years of data, manual/continuous, etc.), then take a look at the data if they want to compare more. Maybe have two apps that accomplish different things - for fish they want to filter to data they actually plan to use, for environmental - just want to make sure we have the most current data. Won't actually filter environmental data until we have the meeting and decide a) which salmon sites we are using, b) how we want to link temp/flow data to sites. Note that we will have different spatial relationships: 1:1 relationship between a stream temperature site and a stream so no choices really, many:1 so we'll likely filter to include most important spawning site based on BPJ and/or confirm they are closely correlated, 0:1 so we'll have to look to a nearby site, again based on BPJ and/or watershed attributes to determine if it should be representative.
+
+
+
+# Data sources
+
+Temperature data that are ready:
+
+* USGS - downloaded using DataRetrievel library and ready.
+* Al von Finster, retired biologist, Fisheries and Oceans Canada - received from Michael Folkes (DFO), already QAed and ready.
+* USFWS/ARRI - these two data sources are combined and ready (FWS was raw, ARRI dailies were QAed). Mostly FWS data, but used ARRI data to fill in missing sites and years.
+* selected a subset of ADFG sites to include.
+
+Temperature data to do:
+
+* BLM data North River and Tozitna need review, don't need unalakleet because already have two datasets for that river. (Dave Esse and Merlyn Schelske)
+* Dave Cannon with Kuskokwim Watershed Council (emailed, but doesn't have any data) 
+* Dan Gillikin (phone call). I reviewed all the sites missing temp in Kusko with Dan and there wasn't much he could fill in.  Cameron sent some data, but they are dailies for Kwethluk and we already have 11 years from OSM. Also Aniak Test Fishery manual data. Possibly he will send more data later.
+* Susan Gray providing data for Niukluk at old weir site 2017 on. Note that we already have 7 years of usgs data for this river and Susan's data is raw and not qaed so could probably rely on usgs instead.
+* ADFG - Erik sent a data request to Zach Liller on 11/29. Alternatively could probably start importing some ADFG data from the AYK DBMS. They may also have some datasets there that are not ADFG, but important to grab, like the Zuray fish wheel dataset for the mainstem.
+* Zach sent an email with data from Norton Sound region and Erik saved it to the drive.
+* Zach sent an email with entire AYK DBMS temperature data downloaded -- a little difficult to understand fields and relationships, may need to follow up.
+* Zach set up a google drive with some data from ADFG and also descriptions of data. A summary of all data in AYK DBMS is in there and there are lots of manual readings for years. It would be good to identify some sites with hobo data and manual data to compare how these two types differ and possible purposes of manual data since they are sometimes very long time series.
+* Also could explore the use of remotely sensed temperature for large mainstem corridors where cell size covers water surface. USGS paper used analysis ready LANDSAT data, which is 30 m. MODIS is 500 m.
+Baughman, C. A., and J. S. Conaway. 2021. Comparison of historical water temperature measurements with landsat analysis ready data provisional surface temperature estimates for the Yukon River in Alaska. Remote Sensing 13(12).
+* AK CASC meeting comments from attendees: Mark Bertram: Rebecca, Be aware that temp data was collected this past summer by FWS for ADFG to monitor Yukon River temp, ADFG has the data contact - Joshua.Clark@alaska.gov and the new FWS water contact is Michael_Winfree@fws.gov (in response to my comment that my FWS contact is Meg Perdue)
+* UAF - Deanna provided data for the Goodpasture River that needs review and could be included.
+
+
+Discharge data that are ready:
+
+* USGS - downloaded using DataRetrievel library and ready.
+* Environment and Climate Change Canada (ECCC) - downloaded using tidyhydat library and ready.
+
+Discharge data to do:
+
+* Could explore using global database of discharge predictions. See email thread with Josh and Chris - Josh can extract data if I give him reach codes, need to intersect discharge sites with MERIT-BASINS catchments, but probably want to QA locations first.
+Yang, Y., M. Pan, P. Lin, H. E. Beck, Z. Zeng, D. Yamazaki, C. H. David, H. Lu, K. Yang, Y. Hong, and E. F. Wood. 2021. Global Reach-Level 3-Hourly River Flood Reanalysis (1980–2019). Bulletin of the American Meteorological Society 102(11):E2086–E2105.
+
+* Erik would like watershed glacier cover for all sites. Rerun watershed script and intersect with RGI.
+* BLM discharge data from Dave for Tozitna, Merlyn looking into North
+* FWS discharge data?
+
+Filtering sites so they match Chinook populations:
+
+* Build out arcgis mapper with all temp and flow sites + escapement monitoring. Also add watersheds.
+* Use these + BPJ of project team members to match sites to populations.
+
+
+# Data summaries
+
+First read in all the metadata and data and create summaries that can be used to update data inventory google sheet.
+
+```{r temperature md}
+
+md_files1 <- list.files("temperature/data/final_data", pattern = "md", full.names = TRUE)
+temp_md <- map_df(md_files1, function(x) readRDS(x)) %>% 
+  mutate(Parameter = "Temperature",
+         chinook_site = case_when(is.na(chinook_site) ~ 1,
+                                  TRUE ~ chinook_site))
+
+#fix non-unique waterbody names
+temp_md <- temp_md %>% 
+  mutate(Waterbody_name = case_when(Agency_ID == "Kuskokwim Sonar" ~ "Kuskokwim River Sonar",
+                                    Agency_ID == "Bethel Test Fishery" ~ "Kuskokwim River at Bethel",
+                                    Agency_ID == "Kalskag Fish Wheel" ~ "Kuskokwim River at Kalskag",
+                                    grepl("Eagle Sonar", Agency_ID) ~ "Yukon River at Eagle",
+                                    grepl("Emmonak", Agency_ID) ~ "Yukon River at Emmonak",
+                                    grepl("Rapids South", Agency_ID) ~ "Yukon River at Rapids",
+                                    Agency_ID == "Salmon River" ~ "Salmon River (trib. to Aniak)",
+                                    Agency_ID == "Salmon River Pitka Fork" ~ "Salmon River Pitka Fork",
+                                    TRUE ~ Waterbody_name)) 
+```
+
+```{r temperature data}
+dat_files1 <- list.files("temperature/data/final_data", pattern = "dat.rds", full.names = TRUE)
+temp_dat <- map_df(dat_files1, function(x) readRDS(x)) %>% 
+  mutate(sampleYear = year(sampleDate))
+
+```
+
+Filtered daymet air temperatures for days with stream temperature data.
+
+Note: daymet is missing 12/31 on leap years.
+
+```{r add daymet air temps}
+dm <- read_csv("temperature/data/daymet/temp_site_daymet.csv")
+
+dm_air <- dm %>% 
+  filter(grepl("tmax|tmin", measurement)) %>% 
+  mutate(sampleDate = as.Date(paste(year, yday), format = "%Y %j")) %>% 
+  rename(SiteID = site) %>% 
+  group_by(SiteID, sampleDate) %>% 
+  summarize(airDT = mean(value))
+
+#missing 12/31 on leap years
+left_join(temp_dat, dm_air) %>% 
+  filter(is.na(airDT)) %>% 
+  count(SiteID, year(sampleDate))
+
+temp_dat <- left_join(temp_dat, dm_air) 
+
+saveRDS(temp_dat, "temperature/data/final_data/combined_data/temp_dat.rds")
+
+
+```
+
+
+
+Rolling pdf of sites and years.
+
+```{r pdf of dailies, eval = FALSE}
+temp_sites <- temp_dat %>% distinct(SiteID)
+pdf("output/Temperature dailies plots.pdf")
+for(i in 1:nrow(temp_sites)) {
+  p1 <- temp_dat %>% 
+    right_join(temp_sites %>% slice(i)) %>% 
+    mutate(Day = format(sampleDate, "%m-%d")) %>% 
+    ggplot() +
+    geom_line(aes(x = as.Date(Day, format = "%m-%d"), y = meanDT), color = "blue") +
+    geom_line(aes(x = as.Date(Day, format = "%m-%d"), y = minDT)) +
+    geom_line(aes(x = as.Date(Day, format = "%m-%d"), y = maxDT), color = "red") +
+    scale_x_date(date_labels = "%b") +
+    facet_wrap(~sampleYear) +
+    labs(title = temp_sites %>% slice(i) %>% pull(SiteID), x = "Date", y = "Temperature")
+  plot(p1)
+}
+dev.off()
+```
+
+
+
+
+
+Save the years with data collection and the lat/long to update site inventory for USGS and Al's sites in Canada. I already did this for FWS OSM sites.
+
+```{r data summary, eval = FALSE}
+left_join(temp_dat, temp_md %>% select(SiteID, Waterbody_name)) %>% 
+  distinct(SiteID, Waterbody_name, sampleYear) %>% 
+  group_by(SiteID, Waterbody_name) %>% 
+  arrange(SiteID, sampleYear) %>% 
+  summarize(years_lst = paste(sampleYear, collapse = ", ")) %>% 
+  left_join(temp_md %>% select(SiteID, Latitude, Longitude)) %>% 
+  write_csv("temperature/data/temp_data_summ.csv")
+```
+
+Get start year, end year, and total years on metadata file prior to saving for web map.
+
+```{r add years to temp md}
+
+temp_md <- left_join(temp_md, temp_dat %>% 
+  distinct(SiteID, sampleYear) %>% 
+  group_by(SiteID) %>% 
+  summarize(start_year = min(sampleYear), 
+            end_year = max(sampleYear),
+            total_years = n())) %>% 
+  select(-Initial_date, -End_date)
+
+temp_md %>% arrange(SiteID)
+temp_dat %>% distinct(SiteID) %>% arrange(SiteID)
+
+#save in GIS folder for adding to web map
+temp_md %>% 
+  arrange(desc(Latitude)) %>% 
+  filter(!is.na(Latitude)) %>%
+  write.csv("W:/GIS/AYK_Chinook/temp_sites_fromR.csv")
+
+#good 55 matches what we have in the shiny app.
+temp_md %>% filter(chinook_site == 1)
+
+#sent to Zach to request lat/longs - Still waiting on correct location for Klondike River
+# temp_md %>% 
+#   filter(SourceName == "ADFG", is.na(Latitude)) #%>% 
+#   write_csv("adfg_5sites.csv")
+
+```
+
+Get region names on temperature md and save complete md and data file for shiny app. Note these outputs are first read into the temperature plots scripts, summarized appropriately for app and then saved to Megan's folder.
+
+```{r save temp md and dat}
+regions <- st_read(dsn = "W:\\GIS\\AYK_Chinook\\AYK_Chinook.gdb", layer = "study_area_wregions_akalb")
+
+temp_sf <- st_as_sf(temp_md, coords = c("Longitude", "Latitude"), crs = "wgs84")
+temp_alb <- st_transform(temp_sf, crs = 3338)
+
+st_crs(regions) == st_crs(temp_alb)
+
+ggplot() +
+  geom_sf(data = regions) +
+  geom_sf(data = temp_alb)
+
+temp_alb <- st_join(temp_alb, regions %>% select(Region)) 
+
+temp_alb %>% 
+  st_drop_geometry() %>% 
+  left_join(temp_md %>% select(SiteID, Latitude, Longitude)) %>% 
+  saveRDS("temperature/data/final_data/combined_data/temp_md.rds")
+```
+
+
+
+
+```{r flow md and data}
+
+flow_md <- list.files("precipitation/data/final_data/", pattern = "md", full.names = TRUE) %>% 
+  map_df(function(x) readRDS(x))
+
+flow_md %>% count(SourceName)
+
+flow_files <- list.files("precipitation/data/final_data", pattern = "_dat.rds", full.names = TRUE)
+
+flow <- map_df(flow_files, function(x) readRDS(x)) %>% mutate(sampleYear = year(date))
+
+
+flow_md <- left_join(flow_md, flow %>%
+  distinct(SiteID, sampleYear) %>% 
+  group_by(SiteID) %>% 
+  summarize(start_year = min(sampleYear),
+            end_year = max(sampleYear),
+            total_yrs = n()) %>% 
+  mutate(Parameter = "Discharge"))
+
+
+#save in GIS folder for adding to web map
+flow_md %>% 
+  write.csv("W:/GIS/AYK_Chinook/flow_sites_fromR.csv")
+
+#save combined files in final data folder for precip
+saveRDS(flow, "precipitation/data/final_data/combined_data/flow_dat.rds")
+
+```
+
+
+```{r}
+flow_sf <- st_as_sf(flow_md, coords = c("Longitude", "Latitude"), crs = "wgs84")
+flow_alb <- st_transform(flow_sf, crs = 3338)
+
+st_crs(regions) == st_crs(flow_alb)
+
+ggplot() +
+  geom_sf(data = regions) +
+  geom_sf(data = flow_alb)
+
+flow_alb <- st_join(flow_alb, regions %>% select(Region)) 
+
+flow_alb %>% 
+  st_drop_geometry() %>% 
+  left_join(flow_md %>% select(SiteID, Latitude, Longitude)) %>% 
+  saveRDS("precipitation/data/final_data/combined_data/flow_md.rds")
+
+```
+
+
+# Map of sites
+
+Read in metadata to make a complete point file and plot.
+
+```{r combined md sf}
+
+md <- bind_rows(flow_md, temp_md)
+
+md %>% count(Parameter, SourceName)
+
+md_sf <- st_as_sf(md %>% filter(!is.na(Latitude)), coords = c("Longitude", "Latitude"), crs = "wgs84")
+md_sf_alb <- st_transform(md_sf, crs = 3338)
+ 
+ayk_sa <- st_read(dsn = "W:/GIS/AYK_Chinook/AYK_Chinook.gdb", layer = "study_area")
+ayk_sa <- st_make_valid(ayk_sa)
+
+st_crs(ayk_sa) == st_crs(md_sf_alb)
+
+ggplot() +
+  geom_sf(data = ayk_sa) +
+  geom_sf(data = md_sf_alb, aes(color = Parameter))
+```
+
+
+
+```{r map of sites, out.width = '100%'}
+tmap_mode("view")
+
+names(md_sf_alb)
+
+sitemap <- tm_shape(md_sf_alb) +
+  tm_dots(id = "SiteID", size = 0.05, col = "Parameter",
+          popup.vars = c("Waterbody_name")) +
+  tm_text("SiteID", size = 1.5, shadow = TRUE, auto.placement = TRUE,
+          just = "bottom", remove.overlap = TRUE, clustering = TRUE, group = "Labels" ) +
+  tm_basemap(server = c(Topo = "Esri.WorldTopoMap", Imagery = "Esri.WorldImagery" )) +
+  tm_shape(ayk_sa) +
+  tm_borders() +
+  tmap_options(check.and.fix = TRUE)
+
+sitemap
+
+
+```
+
+
+```{r mwmt figure all sites, eval = FALSE}
+
+
+mwmt <- dat %>% 
+  mutate(day = yday(date)) %>% 
+  filter(month(date) %in% 5:9) %>% 
+  group_by(SiteID, year = year(date)) %>% 
+  mutate(percent_complete = n()/153) %>% 
+  filter(percent_complete > 0.9) %>%
+  mutate(ma_max = rollapply(maxDT, 7, mean, align = 'center', fill = NA)) %>% 
+  summarize(MWMT = max(ma_max, na.rm = TRUE)) %>% 
+  ungroup() %>% 
+  complete(SiteID, year) 
+
+mwmt_mean <- mwmt %>% 
+  filter(year > 2010) %>% 
+  group_by(year) %>% 
+  summarize(mwmt_mn = mean(MWMT, na.rm = TRUE))
+
+ggplot() +
+  geom_point(data = mwmt, aes(x = year, y = MWMT, group = SiteID), color = "dark gray", size = 1) +
+  geom_line(data = mwmt, aes(x = year, y = MWMT, group = SiteID), color = "dark gray") +
+  geom_line(data = mwmt_mean, aes(x = year, y = mwmt_mn), size = 1.5) +
+  scale_x_continuous(limits = c(2011, 2021), breaks = c(2012, 2014, 2016, 2018, 2020)) +
+  theme_bw() +
+  labs(x = "", title = str_wrap("Maximum Weekly Maximum Temperatures for 32 Rivers (1 to 12 years)", 40))
+
+ggsave("output/mwmt_32_sites.jpeg", width = 5, height = 5, units = "in")
+
+  
+  
+```
+
+A lot of usgs sites just have one year of data, filter to sites with at least 5 years so it is easier to see sample size on figure.
+
+```{r mwmt figure n gt 4, eval = FALSE}
+mwmt %>% filter(!is.na(MWMT)) %>% count(SiteID) %>% arrange(n)
+mwmt %>% filter(SiteID == "usgs_15304010") #one kusko site with 3 years
+
+sites_n5 <- mwmt %>% 
+  filter(!is.na(MWMT)) %>% 
+  count(SiteID) %>%
+  filter(n > 4) %>% 
+  pull(SiteID)
+
+mwmt_mean <- mwmt %>% 
+  filter(year > 2010, SiteID %in% sites_n5) %>% 
+  group_by(year) %>% 
+  summarize(mwmt_mn = mean(MWMT, na.rm = TRUE))
+
+ggplot() +
+  geom_line(data = mwmt %>% filter(SiteID %in% sites_n5), aes(x = year, y = MWMT, group = SiteID), color = "dark gray") +
+  geom_line(data = mwmt_mean, aes(x = year, y = mwmt_mn), size = 1.5) +
+  scale_x_continuous(limits = c(2011, 2021), breaks = c(2012, 2014, 2016, 2018, 2020)) +
+  theme_bw() +
+  labs(x = "", title = str_wrap("Maximum Weekly Maximum Temperatures for 15 Rivers (5 to 12 years)", 40))
+
+ggsave("output/mwmt_15_sites.jpeg", width = 5, height = 5, units = "in")
+
+
+
+```
+
+
+
+# Chinook data
+
+In Megan's shiny app, she is displaying all Chinook sites provided by ADFG in addition to some sites for Yukon.
+
+Code snippet below directly from Megan's shiny app (Map.rmd)
+
+```{r chinook data from shiny app}
+
+"W:/Github/AYK-Chinook/Chinook/Output/Shiny/AYKMap/"
+
+
+data1<- read_csv(file = 'W:/Github/AYK-Chinook/Chinook/Output/Shiny/AYKMap/ADFGDataSummary.csv')   #aerial survey and escapement dataset
+data2<- read_csv(file = 'W:/Github/AYK-Chinook/Chinook/Output/Shiny/AYKMap/ADFG_ASL.csv')         # ASL data set
+data3<- read_csv(file = 'W:/Github/AYK-Chinook/Chinook/Output/Shiny/AYKMap/AditionalDataSummary.csv')         # Additional run reconstructions not in ADFG query
+data.plot <- read_csv(file = 'W:/Github/AYK-Chinook/Chinook/Output/Shiny/AYKMap/DataSumm_EscHarAge.csv') #detailed data for plots
+asl.sum <- aggregate(data.plot$Age, by=list(Category=data.plot$Location), FUN=sum) #getting total numbers by location
+colnames(asl.sum)<- c("Location", "Number_of_Years_ASL")
+data <- left_join(data1, asl.sum, by = "Location") #merging for the map
+data<-rbind(data, data3)
+data$Number_of_Years_ASL[is.na(data$Number_of_Years_ASL)] <- 0 #assinging 0 to the locations that are not included in Asl file
+
+#using filters that Megan has for shiny app and suggestions from Erik for preliminary filter, 
+# brings it down to 102. 
+
+data4 <- data %>% filter(Management_Area != "Kotzebue" & Number_of_Years >= 10 & Avg_Count >= 100) #use data4 Becky!
+
+summary(data4)
+data4 %>% 
+  count(Project_Type)
+
+data4 %>% 
+  filter(is.na(Latitude))
+
+# Also dropping 3 mainstem yukon sites with no lat/long
+data4 %>% 
+  filter(!is.na(Latitude)) %>% 
+  write_csv(file = "W:/GIS/AYK_Chinook/Chinook_sites.csv")
+
+data4 %>% 
+  filter(grepl("Toz", Location))
+
+```
+
+# ST data and metadata - formatted for sharing
+
+```{r read in temp data and combine sites}
+
+temp_md <- readRDS("data/final_data/combined_data/temp_md.rds")
+temp_dat <- readRDS("data/final_data/combined_data/temp_dat.rds")
+
+temp_md <- temp_md %>%
+  bind_rows(tibble(SiteID = "usgs-osm_Anvik", start_year = 2002, end_year = 2019, total_years = 12, Region = "Yukon (US)",
+                   Waterbody_name = "Anvik River", Parameter = "Temperature", SourceName = "USGS and OSM",
+                   Latitude = 62.788721, Longitude = -160.699352),
+            tibble(SiteID = "avf_Blind", start_year = 2011, end_year = 2020, total_years = 10, Region = "Yukon (Canada)",
+                   Waterbody_name = "Blind Creek", Parameter = "Temperature", SourceName = "AlvonF",
+                   Latitude = 62.191867, Longitude = -133.180900),
+            tibble(SiteID = "avf_Teslin", start_year = 2011, end_year = 2019, total_years = 9, Region = "Yukon (Canada)",
+                   Waterbody_name = "Teslin River", Parameter = "Temperature", SourceName = "AlvonF",
+                   Latitude = 61.567450, Longitude = -134.899150),
+            tibble(SiteID = "avf_Yukon_mm", start_year = 2016, end_year = 2020, total_years = 5, Region = "Yukon (Canada)",
+                   Waterbody_name = "Yukon River", Parameter = "Temperature", SourceName = "AlvonF",
+                   Latitude = 62.094733, Longitude = -136.271250))
+
+temp_dat <- temp_dat %>% 
+  mutate(SiteID = case_when(SiteID %in% c("OSM_Anvik", "usgs_15565400") ~ "usgs-osm_Anvik",
+                            SiteID %in% c("avf_09BC002", "avf_09BC003") ~ "avf_Blind",
+                            SiteID %in% c("avf_09AF001", "avf_09AF002") ~ "avf_Teslin",
+                            SiteID %in% c("avf_09AH003", "avf_09AH004") ~ "avf_Yukon_mm",
+                            TRUE ~ SiteID))
+
+temp_md <- left_join(temp_dat %>% distinct(SiteID), temp_md) %>% 
+  mutate(ContactName = case_when(SourceName == "ADFG" ~ "Zach Liller",
+                                 grepl("fws|FWS", SourceName) ~ "Margaret Perdue",
+                                 SourceName == "AlvonF" ~ "Al von Finster",
+                                 SourceName == "USGS" ~ "Jeff Conaway"),
+         ContactEmail = case_when(SourceName == "ADFG" ~ "zachary.liller@alaska.gov a",
+                                 grepl("fws|FWS", SourceName) ~ "margaret_perdue@fws.gov",
+                                 SourceName == "AlvonF" ~ "avonfinster@gmail.com",
+                                 SourceName == "USGS" ~ "jconaway@usgs.gov"))
+
+temp_md %>% 
+  filter(is.na(SourceName))
+gal_md <- readNWISsite("15564860")
+
+temp_md <- temp_md %>% 
+  filter(!is.na(SourceName)) %>% 
+  bind_rows(tibble(Agency_ID = "15564860", SiteID = "usgs_15564860", start_year = NA, end_year = NA, 
+                   total_years = NA, Region = "Yukon (US)", Waterbody_name = "Yukon River at Galena AK", 
+                   Parameter = "Temperature", SourceName = "USGS",
+                   Latitude = gal_md$dec_lat_va, Longitude = gal_md$dec_long_va,
+                   ContactName = "Jeff Conaway", ContactEmail = "jconaway@usgs.gov"))
+  
+
+anti_join(temp_md %>% distinct(SiteID), temp_dat %>% distinct(SiteID))
+```
+
+Check data for May-September and apply that filter before sharing with Yifan and others at NCAR.
+
+```{r pdf of dailies May-Sept, eval = FALSE}
+temp_sites <- temp_dat %>% distinct(SiteID)
+pdf("output/Temperature dailies May-Sept.pdf")
+for(i in 1:nrow(temp_sites)) {
+  p1 <- temp_dat %>% 
+    filter(month(sampleDate) %in% 5:9) %>% 
+    right_join(temp_sites %>% slice(i)) %>% 
+    mutate(Day = format(sampleDate, "%m-%d")) %>% 
+    ggplot() +
+    geom_line(aes(x = as.Date(Day, format = "%m-%d"), y = meanDT), color = "blue") +
+    geom_line(aes(x = as.Date(Day, format = "%m-%d"), y = minDT)) +
+    geom_line(aes(x = as.Date(Day, format = "%m-%d"), y = maxDT), color = "red") +
+    scale_x_date(date_labels = "%b") +
+    facet_wrap(~sampleYear) +
+    labs(title = temp_sites %>% slice(i) %>% pull(SiteID), x = "Date", y = "Temperature")
+  plot(p1)
+}
+dev.off()
+```
+
+
+
+```{r save for sharing}
+
+write_csv(temp_dat %>%
+            filter(month(sampleDate) %in% 5:9), "data/final_data/combined_data/temperature_data_66sites.csv")
+
+write_csv(temp_md, "data/final_data/combined_data/temperature_metadata_66sites.csv")
+
+```
+
+

@@ -1,0 +1,216 @@
+WaterbodyName,NearestCommunity,AYKRegion,Basin,Subbasin,Area
+Goodnews River,Goodnews Bay,T,Kuskokwim,KuskokwimBay,Lower
+Aniak River,Aniak,T,Kuskokwim,LowerKusko,Lower
+Aniak Slough,Aniak,T,Kuskokwim,LowerKusko,Lower
+Kuskokwim River,Bethel,T,Kuskokwim,LowerKusko,Lower
+Kuskokwim River,Kalskag,T,Kuskokwim,LowerKusko,Lower
+Kuskokwim River,Akiak,T,Kuskokwim,LowerKusko,Lower
+Kuskokwim River,Tuluksak,T,Kuskokwim,LowerKusko,Lower
+Kuskokwim River,Napakiak,T,Kuskokwim,LowerKusko,Lower
+Kuskokwim River,Kwethluk,T,Kuskokwim,LowerKusko,Lower
+Kuskokwim River,Akiachak,T,Kuskokwim,LowerKusko,Lower
+Kuskokwim River,Napaskiak,T,Kuskokwim,LowerKusko,Lower
+Kuskokwim River,Oscarville,T,Kuskokwim,LowerKusko,Lower
+Kwethluk River,Kwethluk,T,Kuskokwim,LowerKusko,Lower
+Kwigillingok River,Kwigillingok,T,Kuskokwim,LowerKusko,Lower
+Tuluksak River,Tuluksak,T,Kuskokwim,LowerKusko,Lower
+Tuluksak River,Nyac,T,Kuskokwim,LowerKusko,Lower
+Andreafsky River,St. Marys,T,Yukon,LowerYukon,Lower
+Anvik River,Anvik,T,Yukon,LowerYukon,Lower
+Iditarod River,Flat,T,Yukon,LowerYukon,Lower
+Innoko River,Shageluk,T,Yukon,LowerYukon,Lower
+Innoko River,Ophir,T,Yukon,LowerYukon,Lower
+Innoko River,Holikachuk,T,Yukon,LowerYukon,Lower
+Nulato River,Nulato,T,Yukon,LowerYukon,Lower
+Otter Creek,Flat,T,Yukon,LowerYukon,Lower
+Yukon River,Emmonak,T,Yukon,LowerYukon,Lower
+Yukon River,Russian Mission,T,Yukon,LowerYukon,Lower
+Yukon River,Kaltag,T,Yukon,LowerYukon,Lower
+Yukon River,Nulato,T,Yukon,LowerYukon,Lower
+Yukon River,Holy Cross,T,Yukon,LowerYukon,Lower
+Yukon River,Mountain Village,T,Yukon,LowerYukon,Lower
+Yukon River,Alakanuk,T,Yukon,LowerYukon,Lower
+Yukon River,Marshall,T,Yukon,LowerYukon,Lower
+Yukon River,Anvik,T,Yukon,LowerYukon,Lower
+Yukon River,Pilot Station,T,Yukon,LowerYukon,Lower
+Yukon River,Grayling,T,Yukon,LowerYukon,Lower
+Yukon River,Pitkas Point,T,Yukon,LowerYukon,Lower
+Yukon River,Fortuna Ledge,T,Yukon,LowerYukon,Lower
+Yukon River,Hamilton,T,Yukon,LowerYukon,Lower
+Kuskokwim River,Crooked Creek,T,Kuskokwim,MiddleKusko,Middle
+Kuskokwim River,Aniak,T,Kuskokwim,MiddleKusko,Middle
+Kuskokwim River,Red Devil,T,Kuskokwim,MiddleKusko,Middle
+Kuskokwim River,Stony River,T,Kuskokwim,MiddleKusko,Middle
+Kuskokwim River,Sleetmute,T,Kuskokwim,MiddleKusko,Middle
+Kuskokwim River,Chuathbaluk,T,Kuskokwim,MiddleKusko,Middle
+Kuskokwim River,Napaimute,T,Kuskokwim,MiddleKusko,Middle
+Alatna River,Allakaket,T,Yukon,MiddleYukon,Middle
+Black River,Chalkyitsik,T,Yukon,MiddleYukon,Middle
+Cantwell River,Cantwell,T,Yukon,MiddleYukon,Middle
+Cantwell River,Summit,T,Yukon,MiddleYukon,Middle
+Chandalar River,Venetie,T,Yukon,MiddleYukon,Middle
+Chatanika River,Elliott Hwy Bridge,T,Yukon,MiddleYukon,Middle
+Chatanika River,Steese Highway,T,Yukon,MiddleYukon,Middle
+Chatanika River,Chatanika,T,Yukon,MiddleYukon,Middle
+Chena River,Fairbanks,T,Yukon,MiddleYukon,Middle
+Chisana River,Northway,T,Yukon,MiddleYukon,Middle
+Crooked Creek,Central,T,Yukon,MiddleYukon,Middle
+Delta River,Big Delta,T,Yukon,MiddleYukon,Middle
+Fortymile River,Chicken,T,Yukon,MiddleYukon,Middle
+Jarvis Creek,Delta Junction,T,Yukon,MiddleYukon,Middle
+John River,Bettles,T,Yukon,MiddleYukon,Middle
+Kantishna River,Nenana,T,Yukon,MiddleYukon,Middle
+Koyukuk River,Bettles,T,Yukon,MiddleYukon,Middle
+Koyukuk River,Allakaket,T,Yukon,MiddleYukon,Middle
+Koyukuk River,Hughes,T,Yukon,MiddleYukon,Middle
+Koyukuk River,Wiseman,T,Yukon,MiddleYukon,Middle
+Koyukuk River,Huslia,T,Yukon,MiddleYukon,Middle
+Koyukuk River,Koyukuk,T,Yukon,MiddleYukon,Middle
+Nenana River,Healy,T,Yukon,MiddleYukon,Middle
+Nenana River,McKinley Park,T,Yukon,MiddleYukon,Middle
+Porcupine River,Fort Yukon,T,Yukon,MiddleYukon,Middle
+Salcha River,Salcha,T,Yukon,MiddleYukon,Middle
+Tanana River,Nenana,T,Yukon,MiddleYukon,Middle
+Tanana River,Manley Hot Springs,T,Yukon,MiddleYukon,Middle
+Tanana River,Fairbanks,T,Yukon,MiddleYukon,Middle
+Tanana River,Tanacross,T,Yukon,MiddleYukon,Middle
+Tanana River,Big Delta,T,Yukon,MiddleYukon,Middle
+Tanana River,Sam Charley Island,T,Yukon,MiddleYukon,Middle
+Tanana River,Northway,T,Yukon,MiddleYukon,Middle
+Tanana River,Old Minto,T,Yukon,MiddleYukon,Middle
+Tanana River,Tanana,T,Yukon,MiddleYukon,Middle
+Tanana River,Tolovana,T,Yukon,MiddleYukon,Middle
+Tolovana River,Livengood,T,Yukon,MiddleYukon,Middle
+Tolovana River,Tolovana,T,Yukon,MiddleYukon,Middle
+Wild River,Bettles,T,Yukon,MiddleYukon,Middle
+Wiseman Creek,Wiseman,T,Yukon,MiddleYukon,Middle
+Yukon River,Eagle,T,Yukon,MiddleYukon,Middle
+Yukon River,Galena,T,Yukon,MiddleYukon,Middle
+Yukon River,Ruby,T,Yukon,MiddleYukon,Middle
+Yukon River,Fort Yukon,T,Yukon,MiddleYukon,Middle
+Yukon River,Tanana,T,Yukon,MiddleYukon,Middle
+Yukon River,Circle,T,Yukon,MiddleYukon,Middle
+Yukon River,Beaver,T,Yukon,MiddleYukon,Middle
+Yukon River,Rampart,T,Yukon,MiddleYukon,Middle
+Yukon River,Stevens Village,T,Yukon,MiddleYukon,Middle
+Yukon River,Koyukuk,T,Yukon,MiddleYukon,Middle
+Yukon River,Dalton Hwy Bridge,T,Yukon,MiddleYukon,Middle
+Yukon River,Paimiut,T,Yukon,MiddleYukon,Middle
+Yukon River,Coal Creek,T,Yukon,MiddleYukon,Middle
+Yukon River,Kokrines,T,Yukon,MiddleYukon,Middle
+Fish River,White Mountain,T,NortonSound,NortonSound,Lower
+Koyuk River,Koyuk,T,NortonSound,NortonSound,Lower
+Kwiniuk River,Moses Point,T,NortonSound,NortonSound,Lower
+Nome River,Nome,T,NortonSound,NortonSound,Lower
+Shaktoolik River,Shaktoolik,T,NortonSound,NortonSound,Lower
+Unalakleet River,Unalakleet,T,NortonSound,NortonSound,Lower
+Big River,McGrath,T,Kuskokwim,UpperKusko,Upper
+Crooked Creek,Crooked Creek,T,Kuskokwim,UpperKusko,Upper
+Kuskokwim River,McGrath,T,Kuskokwim,UpperKusko,Upper
+Kuskokwim River,Nikolai,T,Kuskokwim,UpperKusko,Upper
+Kuskokwim River,Medfra,T,Kuskokwim,UpperKusko,Upper
+Takotna River,McGrath,T,Kuskokwim,UpperKusko,Upper
+Takotna River,Takotna,T,Kuskokwim,UpperKusko,Upper
+Klondike River,Dawson,T,Yukon,UpperYukon,Upper
+Yukon River,Dawson,T,Yukon,UpperYukon,Upper
+Yukon River,Whitehorse,T,Yukon,UpperYukon,Upper
+Kobuk River,Ambler,F,,,
+Gakona River,Gakona,F,,,
+Kobuk River,Kobuk,F,,,
+Gulkana River,Gakona,F,,,
+Skwentna River,Skwentna,F,,,
+Susitna River,Sunshine,F,,,
+Little Susitna River,Palmer,F,,,
+Kobuk River,Shungnak,F,,,
+Buckland River,Buckland,F,,,
+Kennicott River,McCarthy,F,,,
+Colville River,Colville Village,F,,,
+Noatak River,Noatak,F,,,
+Tonsina River,Tonsina,F,,,
+Yentna River,Fish Creek,F,,,
+Colville River,Umiat,F,,,
+Anchor River,Anchor Point,F,,,
+Montana Creek,Trapper Creek,F,,,
+Kobuk River,Kiana,F,,,
+Susitna River,Alexander Creek,F,,,
+Sagavanirktok River,Deadhorse,F,,,
+Willow Creek,Willow,F,,,
+Little Nelchina River,Nelchina,F,,,
+Little Susitna River,Houston,F,,,
+Kroto Creek,Oilwell Road,F,,,
+Susitna River,Gold Creek,F,,,
+Willow Lake,Willow,F,,,
+Kenai River,Soldotna,F,,,
+Skagway River,Skagway,F,,,
+Copper River,Gakona,F,,,
+Deshka River,Big Susitna,F,,,
+Noatak River,Fish Hatchery,F,,,
+Chistochina River,Chistochina,F,,,
+Copper River,Copper Center,F,,,
+Copper River,Gulkana,F,,,
+Nushagak River,Ekwok,F,,,
+Talkeetna River,Talkeetna,F,,,
+Kuparuk River,Kuparuk,F,,,
+Selawik River,Selawik,F,,,
+Snow River,Seward,F,,,
+Kvichak River,Iguigig,F,,,
+Nabesna River,Northway,F,,,
+Ninilchik River,Ninilchik,F,,,
+Squirrel River,Kiana,F,,,
+Yentna River,Susitna,F,,,
+Chistochina River,Mankomen Lake,F,,,
+Copper River,Chitina,F,,,
+Gulkana River,Sourdough,F,,,
+Kobuk River,Noorvik,F,,,
+Maclaren River,Denali Hwy,F,,,
+Naknek River,King Salmon,F,,,
+Egegik River,Egegik,F,,,
+Kasilof River,Kasilof,F,,,
+Matanuska River,Palmer,F,,,
+Meade River,Atqasuk,F,,,
+Ninglikfak River,Chevak,F,,,
+Nushagak River,New Stuyahok,F,,,
+Resurrection River,Seward,F,,,
+Campbell Lake,Anchorage,F,,,
+Chitina River,Chitina,F,,,
+Kanektok River,Quinhagak,F,,,
+Kenai River,Cooper Landing,F,,,
+Kvichak River,Levelock,F,,,
+Trail River,Lawing,F,,,
+Yentna River,Skwentna,F,,,
+Campbell Creek,Anchorage,F,,,
+Contact Creek,Anaktuvuk Pass,F,,,
+Eight Mile Creek,Skwentna,F,,,
+Inmachuk River,Deering,F,,,
+Johnson River,Nunapitchuk,F,,,
+Kasilof River,Cohoe,F,,,
+Keggatmiut Riv (Kun),Scammon Bay,F,,,
+Kenai Lake,Cooper Landing,F,,,
+Kenai River,Kenai,F,,,
+Kenai River,Sterling,F,,,
+Kivalina River,Kivalina,F,,,
+Kiwalik River,Candle,F,,,
+Kiwalik River,Kotzebue Sound,F,,,
+Klutina River,Copper Center,F,,,
+Kokolik River,Point Lay,F,,,
+Kuk River,Wainwright,F,,,
+Kukpouruk River,Point Lay,F,,,
+Kukpuk River,Point Lay,F,,,
+Mekoryuk River,Nunivak,F,,,
+Moose River,Sterling,F,,,
+Newhalen River,Iliamna,F,,,
+Nushagak River,Dillingham,F,,,
+Nushagak River,Koliganek,F,,,
+Puntilla Lake,Puntilla,F,,,
+Quinhagak River,Quinhagak,F,,,
+Resurrection Creek,Hope,F,,,
+Salmon River,Gustavus,F,,,
+Slana River,Slana,F,,,
+Stikine River,Wrangall,F,,,
+Susitna River,Curry,F,,,
+Susitna River,Talkeetna,F,,,
+Tazlina River,Glennallen,F,,,
+Tazlina River,Gulkana,F,,,
+Ugashik River,Ugashik,F,,,
+Wood River,Aleknagik,F,,,
+Wulik River,Kivalina,F,,,

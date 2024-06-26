@@ -1,0 +1,24 @@
+logger,start_date,end_date,flag
+Left Bank,6/1/2005,6/3/2005,air
+Left Bank,9/9/2005,9/30/2005,air
+Left Bank,5/27/2006,5/30/2006,air
+Left Bank,8/18/2006,10/1/2006,air
+Left Bank,9/9/2008,10/1/2008,air
+Left Bank,9/15/2009,10/1/2009,air
+Left Bank,6/8/2010,6/9/2010,air
+Left Bank,8/5/2010,10/1/2010,air
+Left Bank,6/7/2011,6/7/2011,air
+Left Bank,8/1/2011,8/31/2011,air
+Left Bank,8/1/2012,8/31/2012,air
+Right Bank,6/1/2005,6/3/2005,air
+Right Bank,9/10/2005,9/27/2005,air
+Right Bank,5/27/2006,5/30/2006,air
+Right Bank,8/18/2006,10/1/2006,air
+Right Bank,9/9/2008,10/1/2008,air
+Right Bank,5/1/2009,6/4/2009,air
+Right Bank,9/15/2009,9/23/2009,air
+Right Bank,6/8/2010,6/9/2010,air
+Right Bank,8/4/2010,10/1/2010,air
+Right Bank,6/7/2011,6/7/2011,air
+Right Bank,8/1/2011,8/31/2011,air
+Right Bank,8/1/2012,8/23/2012,air

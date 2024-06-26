@@ -1,0 +1,329 @@
+---
+title: "0_precipitation"
+output: html_document
+date: '2022-04-13'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(sf)
+library(tidyverse)
+library(tictoc)
+library(daymetr)
+library(raster)
+library(zoo)
+library(lubridate)
+library(ggpubr)
+library(gridExtra)
+
+select <- dplyr::select
+```
+
+Possible precipitation datasets include Daymet, SNAP (monthly only), and WRF.
+
+Methods/metrics:
+
+1. Statistically downscaled SNAP datasets. 1901-2015 (CRU TS 4.0), 1901-2020 (CRU TS 4.05); both are monthly totals at 2x2 km. The original covariate for Cook Inlet Chinook project: total precipitation grids for months of ASON were averaged for study area and the mean taken over each watershed = average watershed average fall precipitation. It made more sense to me to take the maximum of the monthly grids. Then take an average over the watershed = mean watershed max fall monthly precip.  
+
+2. Historical gridded climate data - DAYMET. Goes through most current calendar year, 1x1 km grid. Daily values could be converted to a 5-day precipitation totals (e.g. moving sum) to match Lader's paper on climate extremes. From these grids, calculate max 5-day sum over ASON months, and take average over the watershed. mean watershed max 5-day precip
+
+3. Modeled streamflow from GRFR dataset. This dataset has mean daily streamflow for confluence to confluence river reaches. We need to decide where to extract these data and how best to summarize them. Start with maximum daily streamflow for ASON. For most watersheds, outlet should be fine (e.g. Kusko and US Yukon). 
+
+Discussion with Erik 7/19/22 for how to calculate metrics for genetic pop units - Canada, Lower and Middle Yukon, and Kusko.
+For Canadian Yukon pops and lower and middle Yukon, extract GRFR for major spawning populations. We can examine correlations when there are many:1 between major spawning pops and a genetic area. For Kuskokwim, can just use the 12 nested watersheds we are using for the analysis. When correlations are high, can pick one to use, otherwise, may take some kind of weighted average. For precipitation metrics, generate watersheds for major spawning populations and follow the methods for merging with genetic substocks above.
+
+
+
+
+Meeting on 7/21/22:
+- can do a weighted average based on spawning abund. using return or total run.
+- really not sure if they will include the mgmt units, e.g. lower and middle yukon. Curry will send map showing bdy.
+- work through all covariates for major spawning pops so we can show coherence/divergence for these conditions within larger genetic management units.
+- create a new watershed for entire unalakleet, probably will include north in that index since it is a longer time series.
+
+Meeting with Megan on 9/8/22:
+- revisit where I am with daymet, need to get the 5-day precip ready for fall scour and the summer average for juveniles.
+- create SNAP precip metrics from chinook paper since those are easy and then she has a v1 for her model.
+- SWE is a lower priority but should probably also use daymet since it goes back to 1980 and many brood tables are pre-2000 so modis isn't very helpful.
+- get stream temp model script ready by 9/19 so we can work together on some potential models. Add in a leave one out year cross-validation for each site to test model performance. I can add a weekly air-stream regression, a BRT model with time lags, and mars code from Tim for single air-stream regressions. Megan can check the mars code. We can revisit model performance by site and decide whether or not to add in other predictors (e.g. modeled streamflow). 
+
+
+# Daymet precipitation
+
+Extract daymet precipitation for all discharge sites. That way, we can validate a maximum 5-day precipitation against the maximum daily flows in the measured streamflow dataset.
+
+Josh Paul downloaded daymet using python and used zonal stats to generate max, mean, min, sum for all 47 watersheds by day and year (May to November, 1980 to 2018). First compare the 5-day rolling sum as an indicator of maximum streamflow. Could be other moving sums have a better fit and/or the length of the rolling sum varies by stream size (could use wtd area as a proxy). Then calculate a metric and develop annual time series for all sites.
+
+
+In 2_modeled_streamflow script, generated a dataset of 10 sites with discharge data and saved the measured streamflow dataset. Read this in first to figure out which sites to filter on for comparison.
+
+Note: I had included the gage station in the lower yukon at Pilot Station originally, but we decided to drop those watersheds for analysis because they are not spawning locations so we wouldn't use those as covariates for fall scour. For genetic groups, the plan will be to select one major spawning group or average over the time series across spawning groups within a genetic grouping.
+
+```{r measured Q}
+chin_sites_obsQ <- readRDS(file = "data/chin_sites_obsFlow.rds")
+
+chin_sites_obsQ %>% distinct(SiteID, location_short)
+
+```
+
+# note: does the rollapply need a group_by first?
+
+```{r daymet precipitation merged with discharge}
+dm_prp <- read_csv("data/DAYMET_Daily_Precip_MayToNov_1980-2018.csv")
+
+dm_prp %>% distinct(name)
+
+#good all 10 sites are there
+left_join(dm_prp %>% distinct(name), chin_sites_obsQ %>% distinct(location_short) %>% 
+            mutate(q = 1), by = c("name" = "location_short")) %>% 
+  summarize(sum(q, na.rm = TRUE))
+
+#ok only missing data for the mainstem yukon at pilot station
+left_join(chin_sites_obsQ %>%
+            mutate(jd = format(date, "%j")) %>% 
+            filter(jd %in% 122:334, sampleYear %in% 1980:2018), 
+          dm_prp %>%
+            mutate(date = as.Date(paste0(doy, year), format = "%j%Y")) %>%
+            select(location_short = name, date, sum_prcp_mm)) %>% 
+  filter(is.na(sum_prcp_mm)) %>% 
+  count(location_short, sampleYear)
+
+
+daymet_discharge_comparison <- left_join(chin_sites_obsQ %>%
+                                           mutate(jd = format(date, "%j")) %>% 
+                                           filter(jd %in% 122:334, sampleYear %in% 1980:2018), 
+                                         dm_prp %>%
+                                           mutate(date = as.Date(paste0(doy, year), format = "%j%Y")) %>%
+                                           select(location_short = name, date, sum_prcp_mm, wtd_area = count)) %>% 
+  filter(!is.na(sum_prcp_mm)) %>% 
+  mutate(prcp_3day = rollapply(sum_prcp_mm, 3, sum, fill = NA, align = "right"),
+         prcp_5day = rollapply(sum_prcp_mm, 5, sum, fill = NA, align = "right"),
+         prcp_7day = rollapply(sum_prcp_mm, 7, sum, fill = NA, align = "right"))
+  
+
+daymet_discharge_comparison %>% 
+  group_by(location_short, wtd_area) %>% 
+  summarize(maxq = max(Measured)) %>% 
+  arrange(wtd_area)
+
+```
+
+Compare different rolling sums of daily watershed precipitation to daily discharge.
+
+
+```{r rolling sums of precip versus discharge}
+
+daymet_discharge_comparison %>% 
+  ggplot(aes(x = Measured, y = sum_prcp_mm)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  facet_wrap(~location_short)
+
+daymet_discharge_comparison %>% 
+  ggplot(aes(x = Measured, y = prcp_7day)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  facet_wrap(~location_short, scales = "free")
+
+
+daymet_discharge_comparison %>% summary()
+```
+
+
+```{r pdf of precip versus observed streamflow time series, eval = FALSE}
+
+flow_sites <- daymet_discharge_comparison %>% 
+  distinct(location_short)
+
+
+pdf("output/DailyFlowVPrecip_10sites.pdf")
+for(i in 1:nrow(flow_sites)) {
+ 
+  dat <- left_join(flow_sites %>% slice(i), daymet_discharge_comparison) %>%
+    pivot_longer(cols = c(Measured, sum_prcp_mm, prcp_3day, prcp_5day, prcp_7day), 
+                 names_to = "data_source", values_to = "value") %>%
+    group_by(SiteID) %>% 
+    mutate(maxYear = max(sampleYear)) %>% 
+    filter(sampleYear %in% (maxYear - 5):maxYear,
+           month(date) %in% 8:11) %>% 
+    group_by(SiteID, data_source) %>% 
+    mutate(valueZ = scale(value))
+  
+  p1 <- dat %>% 
+    ggplot(aes(x = date)) +
+    geom_line(aes(y = valueZ, color = data_source), data = . %>% filter(!data_source == "Measured"), size = 0.5) +
+    geom_line(aes(y = valueZ, color = data_source), data = . %>% filter(data_source == "Measured"), size = 1.5) +
+    scale_x_date(date_labels = "%b") +
+    facet_wrap(~sampleYear, scales = "free_x",
+               labeller = labeller(location_short = label_wrap_gen(30))) +
+    labs(title = flow_sites %>% slice(i) %>% pull(location_short),
+         y = "Scaled Discharge and Precipitation") +
+    theme(legend.position = "bottom", axis.title.x = element_blank())
+
+  p2 <- left_join(flow_sites %>% slice(i), daymet_discharge_comparison) %>%
+    filter(month(date) %in% 8:11) %>% 
+    group_by(location_short, sampleYear) %>% 
+    summarize(max_fallQ = max(scale(Measured)),
+              max_prcp = max(scale(sum_prcp_mm))) %>% 
+    ggplot() + 
+    geom_point(aes(x = max_fallQ, y = max_prcp)) +
+    geom_point(aes(x = max_prcp, y = max_fallQ), alpha = 0) + #to create a square plot
+    geom_abline(aes(intercept = 0, slope = 1)) +
+    stat_cor(aes(x = max_fallQ, y = max_prcp), 
+             p.accuracy = 0.001, r.accuracy = 0.01, size = 3) +
+    labs(x = "Observed Streamflow", y = "Daily precip")
+  
+  p3 <- left_join(flow_sites %>% slice(i), daymet_discharge_comparison) %>%
+    filter(month(date) %in% 8:11) %>% 
+    group_by(location_short, sampleYear) %>% 
+    summarize(max_fallQ = max(scale(Measured)),
+              max_prcp = max(scale(prcp_3day))) %>% 
+    ggplot() + 
+    geom_point(aes(x = max_fallQ, y = max_prcp)) +
+    geom_point(aes(x = max_prcp, y = max_fallQ), alpha = 0) + #to create a square plot
+    geom_abline(aes(intercept = 0, slope = 1)) +
+    stat_cor(aes(x = max_fallQ, y = max_prcp), 
+             p.accuracy = 0.001, r.accuracy = 0.01, size = 3) +
+    labs(x = "Observed Streamflow", y = "3-day sum")
+  
+    p4 <- left_join(flow_sites %>% slice(i), daymet_discharge_comparison) %>%
+    filter(month(date) %in% 8:11) %>% 
+    group_by(location_short, sampleYear) %>% 
+    summarize(max_fallQ = max(scale(Measured)),
+              max_prcp = max(scale(prcp_5day))) %>% 
+    ggplot() + 
+    geom_point(aes(x = max_fallQ, y = max_prcp)) +
+    geom_point(aes(x = max_prcp, y = max_fallQ), alpha = 0) + #to create a square plot
+    geom_abline(aes(intercept = 0, slope = 1)) +
+    stat_cor(aes(x = max_fallQ, y = max_prcp), 
+             p.accuracy = 0.001, r.accuracy = 0.01, size = 3) +
+    labs(x = "Observed Streamflow", y = "5-day sum")
+
+    p5 <- left_join(flow_sites %>% slice(i), daymet_discharge_comparison) %>%
+    filter(month(date) %in% 8:11) %>% 
+    group_by(location_short, sampleYear) %>% 
+    summarize(max_fallQ = max(scale(Measured)),
+              max_prcp = max(scale(prcp_7day))) %>% 
+    ggplot() + 
+    geom_point(aes(x = max_fallQ, y = max_prcp)) +
+    geom_point(aes(x = max_prcp, y = max_fallQ), alpha = 0) + #to create a square plot
+    geom_abline(aes(intercept = 0, slope = 1)) +
+    stat_cor(aes(x = max_fallQ, y = max_prcp), 
+             p.accuracy = 0.001, r.accuracy = 0.01, size = 3) +
+    labs(x = "Observed Streamflow", y = "7-day sum")
+
+  
+    grid.arrange(p1, p2, p3, p4, p5, layout_matrix = rbind(c(1,1,1,1),
+                                             c(1,1,1,1),
+                                             c(1,1,1,1),
+                                             c(2,2,3,3),
+                                             c(4,4,5,5)))
+}
+dev.off()
+
+```
+
+Generally, glofas looks better than precipitation as an indicator of peak fall discharge. There are some sites that have pretty good fits and also a few with really poor fits to precipitation. Possibly it depends on the flowpaths; sites with a lot of permafrost might have streamflow more tightly linked to precipitation.
+
+
+# SNAP precipitation
+
+Leslie had downloaded this already so I have it locally. This is the same dataset that we used for the Cook Inlet project and runs through 2015, which should cover all of the brood years of interest. When I looked at the previous ASON files from CRU TS 4.0, they were averages of the total precipitation by month. In the spatial repo, I created those grids as maximum across the four months.
+
+Steps:
+1. Maximum fall precipitation for months of August-November for each grid cell in the watershed.
+2. Average of all grid cells in watershed. Metric is mean watershed maximum fall monthly precipitation.
+
+
+Note: new spatial repo that I am using to prepare grids. I can leave it running while still accessing this repo for other analyses.
+
+Extract SNAP for all analysis watersheds. Check projection first.
+
+
+Note: there are 49 watersheds, which includes on for each major spawning area and also points/watersheds for the Lower and Middle Yukon. In Megan's site list, after expanding so every spawning area/population is on a row, there are 51 records. That is because there are 4 populations that will be analyzed separately, but also as major spawning areas in the yukon genetic groups. She also doesn't have the lower and middle yukon listed separately, but as a many to one with the major spawning areas. I had to list them as separate watersheds to extract environmental conditions at two spatial scales -- for the genetic group and also for the major spawning areas within that genetic group. So, there are 47 major spawning areas + 4 dups in her list.
+
+```{r read in watersheds}
+
+wtds <- read_sf(dsn = "W:\\GIS\\AYK_Chinook\\AYK_Chinook.gdb", layer = "wtds_merge")
+
+st_crs(wtds)  #4326 wgs84
+wtds_aa <- st_transform(wtds, crs = 3338)
+
+```
+
+
+```{r read in SNAP grids}
+out_folder <- "W:\\GIS\\SNAP\\ASON_max_pr_total"
+
+fall_files <- list.files(out_folder, full.names = TRUE)
+
+fall_files <- fall_files[!grepl("aux|ovr", fall_files)]
+
+prp_stack <- stack(fall_files)
+
+compareCRS(wtds_aa, prp_stack)
+
+```
+
+Checked that raster::extract can handle overlapping polygons by running for a few years with Chena and mainstem mid. The values match zonal statistics as table from arcgis: mean of 73.699 for mainstem for 1980 and mean of 69.890 for chena for 1980.
+
+
+Note: can use raster stack to get all ~20 years in one call, and can use all polygons in one file, even if overlapping. Timing on 49 watersheds over entire stack is 57 minutes.
+
+```{r}
+
+# test2 <- wtds_aa %>% filter(location_short %in% c("Barton", "Chena"))
+# 
+# tic(msg="extract precip stack for 2 watersheds")
+# extract1 <- extract(prp_stack, test2, fun = mean, na.rm = TRUE, df = TRUE) 
+# toc(log=TRUE)
+# tic.log()
+
+
+tic(msg="extract precip stack for 49 watersheds")
+wtds_snap_fall_prpr <- extract(prp_stack, wtds_aa, fun = mean, na.rm = TRUE, df = TRUE) %>% 
+  mutate(location = wtds_aa$location_short)
+toc(log=TRUE)
+tic.log()
+
+
+snap_precip <- wtds_snap_fall_prpr %>%
+  pivot_longer(cols = c(-ID, -location)) %>% 
+  mutate(year = substr(name, 13, 17) %>% as.numeric(),
+         metric = "ASON_max_monthly_pr")
+
+```
+
+Save snap precipitation rds for Megan.
+
+```{r}
+saveRDS(snap_precip, "data/final_data/snap_precip.rds")
+```
+
+Also compare how these precipitation metrics match up to the daily peak streamflow from gaged streams. There are 11 identified in the modeled_streamflow script.
+
+```{r}
+obs_flow <- readRDS("data/chin_sites_obsFlow.rds")
+
+snap_comp <- left_join(obs_flow %>% 
+                         filter(month(date) %in% 8:11) %>% 
+                         group_by(location = location_short, year = sampleYear) %>% 
+                         summarize(max_daily_q = max(Measured)), 
+                       snap_precip %>% select(max_monthly_precip = value, location, year))
+
+snap_comp %>% 
+  ggplot(aes(x = max_monthly_precip, y = max_daily_q)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  stat_cor(p.accuracy = 0.001, r.accuracy = 0.01, size = 3) +
+  facet_wrap(~location, scales = "free") +
+  labs(x = "SNAP Maximum Monthly Fall Precipitation",
+       y = "Maximum Observed Daily Streamflow")
+
+ggsave("output/snap_maxdailyflow_11chinsites.jpeg")
+
+
+```
+
+

@@ -1,0 +1,70 @@
+"","Agency_ID","SourceName","Parameter","SiteID","Waterbody_name","chinook_site","start_year","end_year","total_years","Region","Latitude","Longitude"
+"1","Eagle Sonar (Yukon/Canadian Border)","ADFG","Temperature","adfg_Eagle","Yukon River at Eagle",1,2005,2020,12,"Yukon (Canada)",64.873502,-141.078586
+"2","Chandindu River","ADFG","Temperature","adfg_Chandindu","Chandindu River",1,NA,NA,NA,"Yukon (Canada)",64.2694444444444,-139.716944444444
+"3","Klondike River","ADFG","Temperature","adfg_Klondike","Klondike River",1,2006,2009,3,"Yukon (Canada)",63.58,-138.43
+"4","Nordenskiold River","ADFG","Temperature","adfg_Nordenskiold","Nordenskiold River",1,2005,2009,5,"Yukon (Canada)",61.51,-136.06
+"5","Emmonak (Village/City)","ADFG","Temperature","adfg_Emmonak","Yukon River at Emmonak",1,2005,2005,1,"Yukon (US)",62.7775,-164.546
+"6","Rapids South (Left) Fish Wheel","ADFG","Temperature","adfg_Rapids","Yukon River at Rapids",1,2002,2020,17,"Yukon (US)",65.338797,-151.071579
+"7","Kuskokwim Sonar","ADFG","Temperature","adfg_Kuskokwim_Sonar","Kuskokwim River Sonar",1,2017,2020,4,"Kuskokwim",60.8011116666667,-162.552778333333
+"8","Bethel Test Fishery","ADFG","Temperature","adfg_Bethel_Test_Fishery","Kuskokwim River at Bethel",1,2000,2020,21,"Kuskokwim",60.776353,-161.661062
+"9","Kalskag Fish Wheel","ADFG","Temperature","adfg_Kalskag_Fish_Wheel","Kuskokwim River at Kalskag",1,2005,2012,7,"Kuskokwim",61.55075,-160.189533333333
+"10","Kwiniuk Counting Tower","ADFG","Temperature","adfg_Kwiniuk","Kwiniuk River",1,2012,2020,9,"Norton Sound",64.7206,-162.016733
+"11",NA,"AlvonF","Temperature","avf_09AB001","Yukon River at Policemans Point",1,2011,2015,5,"Yukon (Canada)",60.94728333,-135.0936167
+"12",NA,"AlvonF","Temperature","avf_09AB002","McIntyre Creek below Mountainview Drive",1,2011,2020,10,"Yukon (Canada)",60.75963333,-135.10075
+"13",NA,"AlvonF","Temperature","avf_09AB003","Yukon River at Anson Bend",1,2013,2020,8,"Yukon (Canada)",60.62775,-134.869
+"14",NA,"AlvonF","Temperature","avf_09AC001","Ibex River at WSC Station",1,2013,2020,8,"Yukon (Canada)",60.72565,-135.48625
+"15",NA,"AlvonF","Temperature","avf_09AC002","Takhini River below Kusawa Lake",1,2012,2020,9,"Yukon (Canada)",60.64321667,-136.1235
+"16",NA,"AlvonF","Temperature","avf_09AF001","Teslin River at Hootalinqua",1,2011,2015,5,"Yukon (Canada)",61.5859,-134.9309333
+"17",NA,"AlvonF","Temperature","avf_09AF002","Teslin River above Hootalinqua",1,2016,2019,4,"Yukon (Canada)",61.56745,-134.89915
+"18",NA,"AlvonF","Temperature","avf_09AH001","Tatchun River below Tatchun Lake",1,2011,2020,10,"Yukon (Canada)",62.28693333,-136.2386
+"19",NA,"AlvonF","Temperature","avf_09AH002","Tatchun River above Klondike Highway",1,2016,2020,5,"Yukon (Canada)",62.28208333,-136.3105333
+"20",NA,"AlvonF","Temperature","avf_09AH004","Yukon River above the Klondike Highway #2",1,2020,2020,1,"Yukon (Canada)",62.12226667,-136.27125
+"21",NA,"AlvonF","Temperature","avf_09AH003","Yukon River above the Klondike Highway #1",1,2016,2019,4,"Yukon (Canada)",62.09473333,-136.27125
+"22",NA,"AlvonF","Temperature","avf_09AH005","Little Salmon River at Canoe Landing",1,2012,2020,9,"Yukon (Canada)",62.0935,-135.30635
+"23",NA,"AlvonF","Temperature","avf_09AH006","Nordenskiold River at Elk sign",1,2011,2020,10,"Yukon (Canada)",61.8573,-136.1089833
+"24",NA,"AlvonF","Temperature","avf_09BC001","Pelly River below Pelly Crossing",1,2012,2020,9,"Yukon (Canada)",62.84111667,-136.6831333
+"25",NA,"AlvonF","Temperature","avf_09BC003","Blind Creek below abandoned bridge",1,2019,2020,2,"Yukon (Canada)",62.19186667,-133.1809
+"26",NA,"AlvonF","Temperature","avf_09BC002","Blind Creek above abandoned bridge",1,2011,2019,9,"Yukon (Canada)",62.1845,-133.1833
+"27",NA,"AlvonF","Temperature","avf_09DD001","Mcquesten River below WSC Station",1,2011,2014,4,"Yukon (Canada)",63.60815,-137.2772333
+"28",NA,"AlvonF","Temperature","avf_09DD002","Mcquesten River below Klondike Highway",1,2014,2020,7,"Yukon (Canada)",63.5553,-137.4152
+"29",NA,"AlvonF","Temperature","avf_09DD003","Stewart River at Stewart Crossing",1,2012,2019,8,"Yukon (Canada)",63.38245,-136.6839333
+"30",NA,"AlvonF","Temperature","avf_09EA001","North Klondike River at North Fork Bridge",1,2011,2020,10,"Yukon (Canada)",64.0017,-138.5960167
+"31","Aniak River","FWS - Alaska Region Office of Subsistence Management","Temperature","OSM_Aniak","Aniak River",1,2008,2011,4,"Kuskokwim",61.50272,-159.37423
+"32","Anvik River","FWS - Alaska Region Office of Subsistence Management","Temperature","OSM_Anvik","Anvik River",1,2009,2019,7,"Yukon (US)",62.80346,-160.67873
+"33","Chandalar River","FWS - Alaska Region Office of Subsistence Management","Temperature","OSM_Chandalar","Chandalar River",0,2009,2019,11,"Yukon (US)",66.700167,-146.04383
+"34","Chena River","FWS - Alaska Region Office of Subsistence Management","Temperature","OSM_Chena","Chena River",1,2009,2019,10,"Yukon (US)",64.79425,-147.15141
+"35","East Fork Andreafsky","FWS - Alaska Region Office of Subsistence Management","Temperature","OSM_EF_Andreafsky","East Fork Andreafsky River",1,2008,2017,9,"Yukon (US)",62.116444,-162.80672
+"36","George River","FWS - Alaska Region Office of Subsistence Management","Temperature","OSM_George","George River",1,2008,2019,11,"Kuskokwim",61.925,-157.70167
+"37","Gisasa River","FWS - Alaska Region Office of Subsistence Management","Temperature","OSM_Gisasa","Gisasa River",1,2008,2019,11,"Yukon (US)",65.253317,-157.713917
+"38","Henshaw Creek","FWS - Alaska Region Office of Subsistence Management","Temperature","OSM_Henshaw","Henshaw Creek",1,2008,2019,12,"Yukon (US)",66.55633,-152.20997
+"39","Kwethluk River","FWS - Alaska Region Office of Subsistence Management","Temperature","OSM_Kwethluk","Kwethluk River",1,2008,2019,12,"Kuskokwim",60.51828,-161.09245
+"40","Salcha River","FWS - Alaska Region Office of Subsistence Management","Temperature","OSM_Salcha","Salcha River",1,2008,2018,11,"Yukon (US)",64.47726,-146.78262
+"41","Tatlawiksuk River","FWS - Alaska Region Office of Subsistence Management","Temperature","OSM_Tatlawiksuk","Tatlawiksuk River",1,2008,2019,11,"Kuskokwim",61.93485,-156.18997
+"42","Tuluksak River","FWS - Alaska Region Office of Subsistence Management","Temperature","OSM_Tuluksak","Tuluksak River",1,2008,2018,11,"Kuskokwim",61.04402,-160.55415
+"43","Kogrukluk River","FWS - Alaska Region Office of Subsistence Management","Temperature","OSM_Kogrukluk","Kogrukluk River",1,2008,2018,10,"Kuskokwim",60.841111,-157.845556
+"44","Salmon River","FWS - Alaska Region Office of Subsistence Management","Temperature","OSM_Salmon","Salmon River (trib. to Aniak)",1,2008,2016,5,"Kuskokwim",61.062777,-159.194444
+"45","Sheenjek River","FWS - Alaska Region Office of Subsistence Management","Temperature","OSM_Sheenjek","Sheenjek River",0,2009,2012,4,"Yukon (US)",66.78367,-144.46367
+"46","Takotna River","FWS - Alaska Region Office of Subsistence Management","Temperature","OSM_Takotna","Takotna River",1,2008,2013,6,"Kuskokwim",62.98861,-156.06417
+"47","Unalakleet River","FWS - Alaska Region Office of Subsistence Management","Temperature","OSM_Unalakleet","Unalakleet River",1,2011,2019,9,"Norton Sound",63.872307,-160.674408
+"48","Salmon River Pitka Fork","FWS - Alaska Region Office of Subsistence Management","Temperature","OSM_Salmon_Pitka_Fork","Salmon River Pitka Fork",1,2015,2019,5,"Kuskokwim",62.88889,-154.51944
+"49","MFLR","fwsakTogiakNWR","Temperature","Togiak_MFLR","Middle Fork Goodnews River",1,2001,2016,15,"Kuskokwim",59.159287,-161.389563
+"50","15304010","USGS","Temperature","usgs_15304010","Crooked C Ab Airport Rd Nr Crooked Creek AK",0,2017,2020,4,"Kuskokwim",61.8893006,-158.156842
+"51","15310002","USGS","Temperature","usgs_15310002","Mosquito Fork 2 Mi Bl Kechumstuk C Nr Chicken AK",0,2015,2019,5,"Yukon (Canada)",64.0344444,-142.5283333
+"52","15330000","USGS","Temperature","usgs_15330000","Nf Fortymile R Ab Mf Nr Franklin AK",0,2019,2020,2,"Yukon (Canada)",64.4668333,-142.21625
+"53","15331000","USGS","Temperature","usgs_15331000","Mf Fortymile R Nr Mouth Nr Chicken AK",0,2019,2020,2,"Yukon (Canada)",64.4708611,-142.2215
+"54","15348000","USGS","Temperature","usgs_15348000","Fortymile R Nr Steele Creek AK",0,2014,2018,5,"Yukon (Canada)",64.3088552,-141.4045168
+"55","15392000","USGS","Temperature","usgs_15392000","Birch C Ab Twelvemile C Nr Miller House AK",0,2011,2012,2,"Yukon (US)",65.3921157,-145.7149559
+"56","15446000","USGS","Temperature","usgs_15446000","Birch C Nr Circle AK",0,NA,NA,NA,"Yukon (US)",65.7107629,-144.3358018
+"57","15457800","USGS","Temperature","usgs_15457800","Hess C Nr Livengood AK",0,2014,2015,2,"Yukon (US)",65.66483428,-149.0989254
+"58","15484000","USGS","Temperature","usgs_15484000","Salcha R Nr Salchaket AK",1,2014,2020,7,"Yukon (US)",64.47152778,-146.9280556
+"59","15493000","USGS","Temperature","usgs_15493000","Chena R Nr Two Rivers AK",1,2013,2020,8,"Yukon (US)",64.9019722,-146.3613333
+"60","15515500","USGS","Temperature","usgs_15515500","Tanana R At Nenana AK",1,2013,2020,8,"Yukon (US)",64.5649444,-149.094
+"61","15518900","USGS","Temperature","usgs_15518900","Tolovana R Nr Livengood AK",0,2010,2013,4,"Yukon (US)",65.47151429,-148.2688894
+"62","15519030","USGS","Temperature","usgs_15519030","Livengood C At Livengood AK",0,2019,2020,2,"Yukon (US)",65.5229722,-148.5463889
+"63","15519100","USGS","Temperature","usgs_15519100","Tolovana R Bl Rosebud C Nr Livengood AK",0,2010,2020,11,"Yukon (US)",65.4648407,-148.6311143
+"64","15564879","USGS","Temperature","usgs_15564879","Slate C At Coldfoot AK",0,2000,2020,21,"Yukon (US)",67.2544444,-150.1772222
+"65","15565400","USGS","Temperature","usgs_15565400","Anvik R Nr Anvik AK",1,2002,2006,5,"Yukon (US)",62.7887211,-160.699352
+"66","15565447","USGS","Temperature","usgs_15565447","Yukon R At Pilot Station AK",1,2014,2020,7,"Yukon (US)",61.9336866,-162.8829356
+"67","15565700","USGS","Temperature","usgs_15565700","Unalakleet R Ab Chiroskey R Nr Unalakleet AK",1,2000,2007,8,"Norton Sound",63.9342965,-160.3074725
+"68","15580095","USGS","Temperature","usgs_15580095","Niukluk R Ab Melsing C At Council AK",1,2013,2020,8,"Norton Sound",64.8919444,-163.67
+"69","Weir1","USGS","Temperature","usgs_Weir1","Pilgrim River",1,2013,2016,4,"Norton Sound",65.10262,-164.82404

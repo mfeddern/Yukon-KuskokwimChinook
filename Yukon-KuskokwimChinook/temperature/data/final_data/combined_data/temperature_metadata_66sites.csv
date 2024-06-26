@@ -1,0 +1,67 @@
+SiteID,Agency_ID,SourceName,Parameter,Waterbody_name,chinook_site,start_year,end_year,total_years,Region,Latitude,Longitude,ContactName,ContactEmail
+adfg_Chandindu,Chandindu River,ADFG,Temperature,Chandindu River,1,NA,NA,NA,Yukon (Canada),64.26944444444445,-139.71694444444444,Zach Liller,zachary.liller@alaska.gov a
+adfg_Eagle,Eagle Sonar (Yukon/Canadian Border),ADFG,Temperature,Yukon River at Eagle,1,2005,2020,12,Yukon (Canada),64.873502,-141.078586,Zach Liller,zachary.liller@alaska.gov a
+adfg_Emmonak,Emmonak (Village/City),ADFG,Temperature,Yukon River at Emmonak,1,2005,2005,1,Yukon (US),62.7775,-164.546,Zach Liller,zachary.liller@alaska.gov a
+adfg_Klondike,Klondike River,ADFG,Temperature,Klondike River,1,2006,2009,3,Yukon (Canada),63.58,-138.43,Zach Liller,zachary.liller@alaska.gov a
+adfg_Nordenskiold,Nordenskiold River,ADFG,Temperature,Nordenskiold River,1,2005,2009,5,Yukon (Canada),61.51,-136.06,Zach Liller,zachary.liller@alaska.gov a
+adfg_Rapids,Rapids South (Left) Fish Wheel,ADFG,Temperature,Yukon River at Rapids,1,2002,2020,17,Yukon (US),65.338797,-151.071579,Zach Liller,zachary.liller@alaska.gov a
+adfg_Kuskokwim_Sonar,Kuskokwim Sonar,ADFG,Temperature,Kuskokwim River Sonar,1,2017,2020,4,Kuskokwim,60.801111666666664,-162.55277833333332,Zach Liller,zachary.liller@alaska.gov a
+adfg_Bethel_Test_Fishery,Bethel Test Fishery,ADFG,Temperature,Kuskokwim River at Bethel,1,2000,2020,21,Kuskokwim,60.776353,-161.661062,Zach Liller,zachary.liller@alaska.gov a
+adfg_Kalskag_Fish_Wheel,Kalskag Fish Wheel,ADFG,Temperature,Kuskokwim River at Kalskag,1,2005,2012,7,Kuskokwim,61.55075,-160.18953333333334,Zach Liller,zachary.liller@alaska.gov a
+adfg_Kwiniuk,Kwiniuk Counting Tower,ADFG,Temperature,Kwiniuk River,1,2012,2020,9,Norton Sound,64.7206,-162.016733,Zach Liller,zachary.liller@alaska.gov a
+avf_09AB001,NA,AlvonF,Temperature,Yukon River at Policemans Point,1,2011,2015,5,Yukon (Canada),60.94728333,-135.0936167,Al von Finster,avonfinster@gmail.com
+avf_09AB002,NA,AlvonF,Temperature,McIntyre Creek below Mountainview Drive,1,2011,2020,10,Yukon (Canada),60.75963333,-135.10075,Al von Finster,avonfinster@gmail.com
+avf_09AB003,NA,AlvonF,Temperature,Yukon River at Anson Bend,1,2013,2020,8,Yukon (Canada),60.62775,-134.869,Al von Finster,avonfinster@gmail.com
+avf_09AC001,NA,AlvonF,Temperature,Ibex River at WSC Station,1,2013,2020,8,Yukon (Canada),60.72565,-135.48625,Al von Finster,avonfinster@gmail.com
+avf_09AC002,NA,AlvonF,Temperature,Takhini River below Kusawa Lake,1,2012,2020,9,Yukon (Canada),60.64321667,-136.1235,Al von Finster,avonfinster@gmail.com
+avf_Teslin,NA,AlvonF,Temperature,Teslin River,NA,2011,2019,9,Yukon (Canada),61.56745,-134.89915,Al von Finster,avonfinster@gmail.com
+avf_09AH001,NA,AlvonF,Temperature,Tatchun River below Tatchun Lake,1,2011,2020,10,Yukon (Canada),62.28693333,-136.2386,Al von Finster,avonfinster@gmail.com
+avf_09AH002,NA,AlvonF,Temperature,Tatchun River above Klondike Highway,1,2016,2020,5,Yukon (Canada),62.28208333,-136.3105333,Al von Finster,avonfinster@gmail.com
+avf_Yukon_mm,NA,AlvonF,Temperature,Yukon River,NA,2016,2020,5,Yukon (Canada),62.094733,-136.27125,Al von Finster,avonfinster@gmail.com
+avf_09AH005,NA,AlvonF,Temperature,Little Salmon River at Canoe Landing,1,2012,2020,9,Yukon (Canada),62.0935,-135.30635,Al von Finster,avonfinster@gmail.com
+avf_09AH006,NA,AlvonF,Temperature,Nordenskiold River at Elk sign,1,2011,2020,10,Yukon (Canada),61.8573,-136.1089833,Al von Finster,avonfinster@gmail.com
+avf_09BC001,NA,AlvonF,Temperature,Pelly River below Pelly Crossing,1,2012,2020,9,Yukon (Canada),62.84111667,-136.6831333,Al von Finster,avonfinster@gmail.com
+avf_Blind,NA,AlvonF,Temperature,Blind Creek,NA,2011,2020,10,Yukon (Canada),62.191867,-133.1809,Al von Finster,avonfinster@gmail.com
+avf_09DD001,NA,AlvonF,Temperature,Mcquesten River below WSC Station,1,2011,2014,4,Yukon (Canada),63.60815,-137.2772333,Al von Finster,avonfinster@gmail.com
+avf_09DD002,NA,AlvonF,Temperature,Mcquesten River below Klondike Highway,1,2014,2020,7,Yukon (Canada),63.5553,-137.4152,Al von Finster,avonfinster@gmail.com
+avf_09DD003,NA,AlvonF,Temperature,Stewart River at Stewart Crossing,1,2012,2019,8,Yukon (Canada),63.38245,-136.6839333,Al von Finster,avonfinster@gmail.com
+avf_09EA001,NA,AlvonF,Temperature,North Klondike River at North Fork Bridge,1,2011,2020,10,Yukon (Canada),64.0017,-138.5960167,Al von Finster,avonfinster@gmail.com
+OSM_Takotna,Takotna River,FWS - Alaska Region Office of Subsistence Management,Temperature,Takotna River,1,2008,2013,6,Kuskokwim,62.98861,-156.06417,Margaret Perdue,margaret_perdue@fws.gov
+OSM_Aniak,Aniak River,FWS - Alaska Region Office of Subsistence Management,Temperature,Aniak River,1,2008,2011,4,Kuskokwim,61.50272,-159.37423,Margaret Perdue,margaret_perdue@fws.gov
+OSM_Sheenjek,Sheenjek River,FWS - Alaska Region Office of Subsistence Management,Temperature,Sheenjek River,0,2009,2012,4,Yukon (US),66.78367,-144.46367,Margaret Perdue,margaret_perdue@fws.gov
+usgs-osm_Anvik,NA,USGS and OSM,Temperature,Anvik River,NA,2002,2019,12,Yukon (US),62.788721,-160.699352,NA,NA
+OSM_Unalakleet,Unalakleet River,FWS - Alaska Region Office of Subsistence Management,Temperature,Unalakleet River,1,2011,2019,9,Norton Sound,63.872307,-160.674408,Margaret Perdue,margaret_perdue@fws.gov
+OSM_Chandalar,Chandalar River,FWS - Alaska Region Office of Subsistence Management,Temperature,Chandalar River,0,2009,2019,11,Yukon (US),66.700167,-146.04383,Margaret Perdue,margaret_perdue@fws.gov
+OSM_Chena,Chena River,FWS - Alaska Region Office of Subsistence Management,Temperature,Chena River,1,2009,2019,10,Yukon (US),64.79425,-147.15141,Margaret Perdue,margaret_perdue@fws.gov
+OSM_EF_Andreafsky,East Fork Andreafsky,FWS - Alaska Region Office of Subsistence Management,Temperature,East Fork Andreafsky River,1,2008,2017,9,Yukon (US),62.116444,-162.80672,Margaret Perdue,margaret_perdue@fws.gov
+OSM_George,George River,FWS - Alaska Region Office of Subsistence Management,Temperature,George River,1,2008,2019,11,Kuskokwim,61.925,-157.70167,Margaret Perdue,margaret_perdue@fws.gov
+OSM_Gisasa,Gisasa River,FWS - Alaska Region Office of Subsistence Management,Temperature,Gisasa River,1,2008,2019,11,Yukon (US),65.253317,-157.713917,Margaret Perdue,margaret_perdue@fws.gov
+OSM_Henshaw,Henshaw Creek,FWS - Alaska Region Office of Subsistence Management,Temperature,Henshaw Creek,1,2008,2019,12,Yukon (US),66.55633,-152.20997,Margaret Perdue,margaret_perdue@fws.gov
+OSM_Kogrukluk,Kogrukluk River,FWS - Alaska Region Office of Subsistence Management,Temperature,Kogrukluk River,1,2008,2018,10,Kuskokwim,60.841111,-157.845556,Margaret Perdue,margaret_perdue@fws.gov
+OSM_Kwethluk,Kwethluk River,FWS - Alaska Region Office of Subsistence Management,Temperature,Kwethluk River,1,2008,2019,12,Kuskokwim,60.51828,-161.09245,Margaret Perdue,margaret_perdue@fws.gov
+OSM_Salcha,Salcha River,FWS - Alaska Region Office of Subsistence Management,Temperature,Salcha River,1,2008,2018,11,Yukon (US),64.47726,-146.78262,Margaret Perdue,margaret_perdue@fws.gov
+OSM_Salmon,Salmon River,FWS - Alaska Region Office of Subsistence Management,Temperature,Salmon River (trib. to Aniak),1,2008,2016,5,Kuskokwim,61.062777,-159.194444,Margaret Perdue,margaret_perdue@fws.gov
+OSM_Salmon_Pitka_Fork,Salmon River Pitka Fork,FWS - Alaska Region Office of Subsistence Management,Temperature,Salmon River Pitka Fork,1,2015,2019,5,Kuskokwim,62.88889,-154.51944,Margaret Perdue,margaret_perdue@fws.gov
+OSM_Tatlawiksuk,Tatlawiksuk River,FWS - Alaska Region Office of Subsistence Management,Temperature,Tatlawiksuk River,1,2008,2019,11,Kuskokwim,61.93485,-156.18997,Margaret Perdue,margaret_perdue@fws.gov
+OSM_Tuluksak,Tuluksak River,FWS - Alaska Region Office of Subsistence Management,Temperature,Tuluksak River,1,2008,2018,11,Kuskokwim,61.04402,-160.55415,Margaret Perdue,margaret_perdue@fws.gov
+Togiak_MFLR,MFLR,fwsakTogiakNWR,Temperature,Middle Fork Goodnews River,1,2001,2016,15,Kuskokwim,59.159287,-161.389563,Margaret Perdue,margaret_perdue@fws.gov
+usgs_15304010,15304010,USGS,Temperature,Crooked C Ab Airport Rd Nr Crooked Creek AK,0,2017,2020,4,Kuskokwim,61.889300599999984,-158.156842,Jeff Conaway,jconaway@usgs.gov
+usgs_15310002,15310002,USGS,Temperature,Mosquito Fork 2 Mi Bl Kechumstuk C Nr Chicken AK,0,2015,2019,5,Yukon (Canada),64.03444439999996,-142.5283333,Jeff Conaway,jconaway@usgs.gov
+usgs_15330000,15330000,USGS,Temperature,Nf Fortymile R Ab Mf Nr Franklin AK,0,2019,2020,2,Yukon (Canada),64.46683329999999,-142.21625,Jeff Conaway,jconaway@usgs.gov
+usgs_15331000,15331000,USGS,Temperature,Mf Fortymile R Nr Mouth Nr Chicken AK,0,2019,2020,2,Yukon (Canada),64.4708611,-142.2215,Jeff Conaway,jconaway@usgs.gov
+usgs_15348000,15348000,USGS,Temperature,Fortymile R Nr Steele Creek AK,0,2014,2018,5,Yukon (Canada),64.30885519999998,-141.4045168,Jeff Conaway,jconaway@usgs.gov
+usgs_15392000,15392000,USGS,Temperature,Birch C Ab Twelvemile C Nr Miller House AK,0,2011,2012,2,Yukon (US),65.39211570000002,-145.7149559,Jeff Conaway,jconaway@usgs.gov
+usgs_15446000,15446000,USGS,Temperature,Birch C Nr Circle AK,0,NA,NA,NA,Yukon (US),65.71076290000005,-144.3358018,Jeff Conaway,jconaway@usgs.gov
+usgs_15457800,15457800,USGS,Temperature,Hess C Nr Livengood AK,0,2014,2015,2,Yukon (US),65.66483427999998,-149.0989254,Jeff Conaway,jconaway@usgs.gov
+usgs_15484000,15484000,USGS,Temperature,Salcha R Nr Salchaket AK,1,2014,2020,7,Yukon (US),64.47152777999999,-146.9280556,Jeff Conaway,jconaway@usgs.gov
+usgs_15493000,15493000,USGS,Temperature,Chena R Nr Two Rivers AK,1,2013,2020,8,Yukon (US),64.90197220000003,-146.3613333,Jeff Conaway,jconaway@usgs.gov
+usgs_15515500,15515500,USGS,Temperature,Tanana R At Nenana AK,1,2013,2020,8,Yukon (US),64.56494440000002,-149.094,Jeff Conaway,jconaway@usgs.gov
+usgs_15518900,15518900,USGS,Temperature,Tolovana R Nr Livengood AK,0,2010,2013,4,Yukon (US),65.47151429000002,-148.2688894,Jeff Conaway,jconaway@usgs.gov
+usgs_15519030,15519030,USGS,Temperature,Livengood C At Livengood AK,0,2019,2020,2,Yukon (US),65.52297220000001,-148.5463889,Jeff Conaway,jconaway@usgs.gov
+usgs_15519100,15519100,USGS,Temperature,Tolovana R Bl Rosebud C Nr Livengood AK,0,2010,2020,11,Yukon (US),65.4648407,-148.6311143,Jeff Conaway,jconaway@usgs.gov
+usgs_15564879,15564879,USGS,Temperature,Slate C At Coldfoot AK,0,2000,2020,21,Yukon (US),67.25444439999998,-150.1772222,Jeff Conaway,jconaway@usgs.gov
+usgs_15565447,15565447,USGS,Temperature,Yukon R At Pilot Station AK,1,2014,2020,7,Yukon (US),61.93368660000001,-162.8829356,Jeff Conaway,jconaway@usgs.gov
+usgs_15565700,15565700,USGS,Temperature,Unalakleet R Ab Chiroskey R Nr Unalakleet AK,1,2000,2007,8,Norton Sound,63.93429650000001,-160.3074725,Jeff Conaway,jconaway@usgs.gov
+usgs_15580095,15580095,USGS,Temperature,Niukluk R Ab Melsing C At Council AK,1,2013,2020,8,Norton Sound,64.89194439999999,-163.67,Jeff Conaway,jconaway@usgs.gov
+usgs_Weir1,Weir1,USGS,Temperature,Pilgrim River,1,2013,2016,4,Norton Sound,65.10262,-164.82404,Jeff Conaway,jconaway@usgs.gov
+usgs_15564860,15564860,USGS,Temperature,Yukon River at Galena AK,NA,NA,NA,NA,Yukon (US),64.7368753,-156.8941483,Jeff Conaway,jconaway@usgs.gov

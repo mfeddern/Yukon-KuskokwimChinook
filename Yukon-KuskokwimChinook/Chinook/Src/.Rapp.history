@@ -1,0 +1,2 @@
+pred[s,n] = spawn[s,n]*exp(alpha[s] - spawn[s,n]*beta[s]+sum(cov_eff[s,n,1:n.covars]));
+pred[s,n] = spawn[s,n]*exp(alpha[s] - spawn[s,n]*beta[s]+sum(cov_eff[s,n,1:ncovars]));

@@ -1,0 +1,216 @@
+---
+title: "2a_ChenaR_temperature models"
+output: html_document
+date: "2022-11-23"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+Investigating different models using the USGS site on the Chena river. 
+
+## Chena River
+
+
+Start out by investigating this model using same USGS site in Neuswanger et al. 2015. Replace with air temps from OSM site downstream that I am using for analysis. For first attempt, examining correlations to lagged air temperatures, fit the same logistic model as in the paper, and examine fit.
+
+```{r chena data}
+#load temperature data and md files, 'complete' dates here for plotting
+temp_md <- readRDS("data/final_data/combined_data/temp_md.rds")
+temp_dat <- readRDS("data/final_data/combined_data/temp_dat.rds")
+
+left_join(temp_dat %>% distinct(SiteID), temp_md %>% select(SiteID, Waterbody_name)) %>% 
+  filter(grepl("usgs", SiteID))
+```
+
+
+
+```{r chena lags}
+
+
+
+
+chena_nls_dat <- airTemps %>% 
+  filter(SiteID == "OSM_Chena") %>% 
+  select(-SiteID) %>% 
+  left_join(temp_dat %>% filter(SiteID == "usgs_15493000") %>% select(-airDT)) %>% 
+  filter(!is.na(meanDT)) %>% 
+  mutate(week = week(sampleDate),
+         airDT_lag1 = lag(airDT))
+
+chena_nls_dat %>% count(sampleYear)
+
+
+chena_ccf <- chena_nls_dat %>% 
+  filter(month(sampleDate) %in% 6:9, !sampleYear == 2013) %>% 
+  group_by(sampleYear) %>%
+  summarize(ccfout = list(ccf(airDT, meanDT, lag.max = 10)$acf)) 
+
+chena_ccf %>% 
+  slice(3) %>% 
+   pull(ccfout)
+
+#in most years, the strongest correlation is with matching day-of air temperatures
+chena_ccf %>% 
+  unnest(ccfout) %>% 
+  mutate(lag = rep(-10:10, 8)) %>% 
+  group_by(sampleYear) %>% 
+  top_n(1, ccfout)
+```
+
+Examine ccf for prewhitened time series of air temperatures. (Per Cryer and Chan - Time Series Analysis in R, pgs. 265 on)
+
+
+```{r}
+
+
+chena_ccf_pw <- chena_nls_dat %>% 
+  filter(month(sampleDate) %in% 6:9, sampleYear == 2020) %>% 
+  summarize(prewhiten(airDT, meanDT, lag.max = 5))
+
+chena_ccf_pw[[1]]$ccf[-5:0]
+
+chena_nls_dat %>% 
+  filter(month(sampleDate) %in% 6:9, !sampleYear == 2013) %>% 
+  group_by(sampleYear) %>%
+  summarize(ccf_prewh = list(prewhiten(airDT, meanDT)))
+
+```
+
+
+
+Two models fit here, one using logistic regression function and second using formula for model. Note the gamma and alpha parameters match Neuswanger model in nls2, but not nls1, where I used the SSlogis function. The maximum slope makes much more sense using nls2.
+
+R^2 = 0.9
+Looks like there is evidence that seasonal models might improve the fit.
+
+
+``` {r chena logistic model}
+
+chena_nls1 <- nls(meanDT ~ SSlogis(airDT, Asym, smid, scal), chena_nls_dat)
+summary(chena_nls1)
+acf(resid(chena_nls1))
+
+chena_nls2 <- nls(meanDT ~ Asym/(1 + exp(scal*(xmid-airDT))), data = chena_nls_dat,
+                  start = list(Asym = 10, xmid = 0, scal = 1))
+summary(chena_nls2)
+acf(resid(chena_nls2)) #these need to be by year to make sense
+
+chena_nls_dat %>% 
+  mutate(nls2_resid = resid(chena_nls2)) %>% 
+  group_by(sampleYear) %>% 
+  summarize(acf = list(acf(nls2_resid)$acf)) %>% 
+  unnest(acf)
+
+
+#gamma using theta and alpha from Neuswanger model 
+(4*tan(0.5524))/(11.45) 
+
+#theta using estimated gamma and alpha from my model
+atan(0.219128 * 12.223998/4)
+
+
+RSS <- sum(residuals(chena_nls2)^2)
+TSS <- sum((chena_nls_dat[-1, "meanDT"] - mean(chena_nls_dat[-1,] %>% pull(meanDT)))^2)
+1 - (RSS/TSS) #0.90
+
+chena_nls_dat %>% 
+  mutate(preds = predict(chena_nls2),
+         resid = resid(chena_nls2),
+         week = week(sampleDate)) %>% 
+  ggplot() +
+  geom_point(aes(x = airDT, y = meanDT, color = week)) +
+  geom_line(aes(x = airDT, y = preds)) 
+```
+
+Second attempt, try to improve fit by using separate models for rising and falling temperatures. Maximum occurs in end-July, split on week 30.
+
+```{r chena model by season}
+
+chena_nls_dat %>% 
+  group_by(week) %>% 
+  summarize(mean(meanDT),
+            max(sampleDate))
+
+chena_nls_dat <- chena_nls_dat %>% 
+  mutate(season = case_when(week < 30 ~ "rising",
+                            TRUE ~ "falling"))
+
+nls_in <- chena_nls_dat %>% slice(-1) %>% filter(season == "rising")
+
+chena_nls3_ris <- nls(meanDT ~ Asym/(1 + exp(scal*(xmid-airDT_lag1))), 
+                      data = nls_in,
+                      start = list(Asym = 10, xmid = 0, scal = 1))
+summary(chena_nls3_ris)
+
+RSS <- sum(residuals(chena_nls3_ris)^2)
+TSS <- sum((nls_in %>% pull(meanDT) - mean(nls_in %>% pull(meanDT)))^2)
+1 - (RSS/TSS) #0.90
+
+
+nls_in <- chena_nls_dat %>% slice(-1) %>% filter(season == "falling")
+
+chena_nls3_fal <- nls(meanDT ~ Asym/(1 + exp(scal*(xmid-airDT_lag1))), 
+                      data = nls_in,
+                      start = list(Asym = 1, xmid = 0, scal = 1))
+
+summary(chena_nls3_fal)
+
+RSS <- sum(residuals(chena_nls3_fal)^2)
+TSS <- sum((nls_in %>% pull(meanDT) - mean(nls_in %>% pull(meanDT)))^2)
+1 - (RSS/TSS) #0.94
+
+
+bind_rows(chena_nls_dat %>% 
+            slice(-1) %>% 
+            filter(season == "rising") %>% 
+            mutate(preds = predict(chena_nls3_ris)),
+          chena_nls_dat %>% 
+            slice(-1) %>% 
+            filter(season == "falling") %>% 
+            mutate(preds = predict(chena_nls3_fal))) %>% 
+  ggplot() +
+  geom_point(aes(x = airDT_lag1, y = meanDT)) +
+  geom_line(aes(x = airDT_lag1, y = preds, color = season), size = 2) 
+
+
+```
+
+Third attempt, try adding in discharge.
+
+```{r chena model with discharge}
+glofas <- read_csv("W:/Github/spatial/glofas_output/glofas_discharge.csv")
+
+names(glofas)
+
+chena_nls_dat <- left_join(chena_nls_dat, glofas %>% select(sampleDate = date, glofas = Chena))
+
+chena_nls_dat %>% 
+  summarize(list(ccf(glofas, meanDT)))
+
+nls_in <- chena_nls_dat %>% slice(-1)
+
+chena_nls4 <- nls(meanDT ~ Asym/(1 + exp(scal*(xmid-airDT_lag1))) + fitp/glofas, 
+                      data = nls_in,
+                      start = list(Asym = 1, xmid = 0, scal = 1, fitp = 0))
+
+summary(chena_nls4)
+
+RSS <- sum(residuals(chena_nls4)^2)
+TSS <- sum((nls_in %>% pull(meanDT) - mean(nls_in %>% pull(meanDT)))^2)
+1 - (RSS/TSS) #0.90
+
+#what about a negative fit for discharge?
+chena_nls5 <- nls(meanDT ~ Asym/(1 + exp(scal*(xmid-airDT_lag1))) + fitp*glofas, 
+                      data = nls_in,
+                      start = list(Asym = 1, xmid = 0, scal = 1, fitp = 0))
+summary(chena_nls5)
+RSS <- sum(residuals(chena_nls5)^2)
+TSS <- sum((nls_in %>% pull(meanDT) - mean(nls_in %>% pull(meanDT)))^2)
+1 - (RSS/TSS) #0.90
+
+```
+
+

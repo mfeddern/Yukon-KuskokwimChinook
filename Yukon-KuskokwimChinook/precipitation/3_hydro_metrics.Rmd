@@ -1,0 +1,347 @@
+---
+title: "3_hydro_metrics"
+output: html_document
+date: "2022-12-20"
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# library(ggpubr)
+library(tidyverse)
+library(lubridate)
+library(zoo)
+# library(gridExtra)
+library(googlesheets4)
+# library(broom)
+# library(TSA)
+# library(equatiomatic)
+# library(gridExtra)
+# library(grid)
+library(gbm)
+library(ggpmisc)
+
+
+## put histograms on the diagonal
+panel.hist <- function(x, ...)
+{
+    usr <- par("usr")
+    par(usr = c(usr[1:2], 0, 1.5) )
+    h <- hist(x, plot = FALSE)
+    breaks <- h$breaks; nB <- length(breaks)
+    y <- h$counts; y <- y/max(y)
+    rect(breaks[-nB], 0, breaks[-1], y, col = "cyan", ...)
+}
+
+## put (absolute) correlations on the upper panels,
+## with size proportional to the correlations.
+panel.cor <- function(x, y, digits = 2, prefix = "", cex.cor, ...)
+{
+    par(usr = c(0, 1, 0, 1))
+    r <- abs(cor(x, y, use = "pairwise.complete.obs"))
+    txt <- format(c(r, 0.123456789), digits = digits)[1]
+    txt <- paste0(prefix, txt)
+    if(missing(cex.cor)) cex.cor <- 0.8/strwidth(txt)
+    text(0.5, 0.5, txt, cex = cex.cor * r)
+}
+```
+
+
+Steps:
+
+* Reading in different datasets for each covariate and using them to calculate the appropriate annual metric.
+* Selecting major spawning area as needed for the Canadian genetic substocks.
+
+Note that in Brown et al., Table 4, they provide quantitative information on how they determined the 34 major spawning areas that can be used to assess if one might be more important than another. It is also possible to compare the number of major + minor spawning areas in each watershed that lies within a genetic group.
+
+* For Carmacks, Little Salmon and Big Salmon are both major spawning areas, but Big Salmon has higher numbers based on mean aerial survey counts from decades of data. And Big Salmon has 1 major + 4 minor spawning areas, whereas little salmon has 1 major and 2 minor.
+* For middle mainstem, the Yukon mainstem makes up about 5% of the total population so would definitely be bigger than Tatchun Creek.
+* For Pelly, all three major spawning areas have different methods of assessment. Blind Creek is really small, probably Ross or South MacMillan Rivers would be better; Ross river has 1 major + 2 minor areas whereas S MacMillon has 1 major and 1 minor area.
+* For Teslin, Teslin includes the entire watershed with ~ 15 minor spawning areas, not including the Nisutlin and Wolf tributaries. Wolf has 1 minor area and Nisutlin has 2 minor areas. Teslin is estimated to include ~ 5% of the entire population.
+
+Recommend using Big Salmon, Yukon Mainstem, Ross, and Teslin as the major spawning areas within each genetic substock.
+
+
+
+# Daymet precipitation
+
+Two metrics: maximum 5-day precipitation for August-November spawning window, average daily precipitation for July-September rearing window.
+
+```{r daymet precip}
+dm_prp <- read_csv("data/DAYMET_Daily_Precip_MayToNov_1980-2018_escSites.csv")
+
+summary(dm_prp)
+
+prcp_mets <- dm_prp %>%
+  mutate(date = as.Date(paste0(doy, year), format = "%j%Y")) %>%
+  select(location_short = name, date, year, sum_prcp_mm, wtd_area = count) %>% 
+  arrange(location_short, year, date) %>% 
+  filter(!is.na(sum_prcp_mm)) %>%
+  group_by(location_short, year) %>% 
+  mutate(prcp_5day = rollapply(sum_prcp_mm, 5, sum, fill = NA, align = "right")) %>% 
+  summarize(max5dprcp_spawn = max(prcp_5day[month(date) %in% 8:11]),
+            mnprcp_rear = mean(sum_prcp_mm[month(date) %in% 5:9]))
+
+
+```
+
+
+# Glofas streamflow
+
+Two metrics: maximum daily streamflow in August-November spawning window, median daily discharge for July-September rearing window.
+
+```{r}
+glofas <- read_csv("W:/Github/spatial/glofas_output/glofas_discharge.csv") %>% 
+  pivot_longer(cols = -date, names_to = "location_short", values_to = "discharge")
+
+summary(glofas)
+
+sf_mets <- glofas %>% 
+  group_by(location_short, year = year(date)) %>%
+  filter(year %in% 1980:2021) %>% 
+  summarize(maxq_spawn = max(discharge[month(date) %in% 8:11]),
+            medq_rear = median(discharge[month(date) %in% 5:9]),
+            minq_spawn = min(discharge[month(date) %in% 8:11]))
+
+
+sf_mets %>% 
+  ggplot(aes(x = year)) +
+  geom_line(aes(y = minq_spawn)) +
+  geom_line(aes(y = maxq_spawn), color = "blue") +
+  facet_wrap(~location_short, scales = "free")
+
+sf_mets %>% 
+  ggplot(aes(x = minq_spawn, y = maxq_spawn)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  facet_wrap(~location_short, scales = "free")
+
+
+  
+```
+
+
+# Daymet SWE
+
+```{r}
+dm_swe <- read_csv("data/DAYMET_SWE_April1_1980-2018_escSites.csv") %>% 
+  rename(location_short = name, mean_swe = mean_swe_kgm2,
+         max_swe = max_swe_kgm2)
+
+swe_met <- dm_swe %>% 
+  select(location_short, year, mean_swe)
+```
+
+
+
+# Combine hydrology metrics and link to populations
+
+Combine different hydrologic metrics into one dataframe for each population and year. Join on the streamflow metrics since that is what we ended up using in the model and Megan wants all covariates to as late as possible. Those were through 2021.
+
+```{r all hydro mets}
+
+hydro_mets <- left_join(sf_mets, prcp_mets) %>% 
+  left_join(swe_met)
+
+summary(hydro_mets)
+```
+
+Read in covariates google sheet and link hydrologic metrics to populations -- selecting one major spawning area for each population. Major spawning areas correspond to location_short field in the metrics data frame.
+
+```{r hydro metrics by population}
+gs_sites <- read_sheet("https://docs.google.com/spreadsheets/d/1uS7iIqob7lP5zv94FCtnjfDlQgjBr-D1LCq4RGuLcbI/edit#gid=0",
+                    na = "NA")
+
+pops_hyMets <- gs_sites %>% 
+  filter(!Population %in% c("Kuskokwim", "Unalakleet", "MainstemLower", "MainstemMid")) %>% 
+  select(Population, Region, Major_Spawning_Areas) %>% 
+  mutate(Major_Spawning_Areas = case_when(Population == "Carmacks" ~ "BigSalmon",
+                                          Population == "MidMain" ~ "YukonMainstem",
+                                          Population == "Pelly" ~ "Ross",
+                                          Population == "Teslin" ~ "Teslin",
+                                          TRUE ~ Major_Spawning_Areas))
+
+pops_hyMets <- left_join(pops_hyMets, hydro_mets, by = c("Major_Spawning_Areas" = "location_short"))
+
+
+summary(pops_hyMets)
+
+pops_hyMets %>% 
+  arrange(Population, year) %>% 
+  group_by(Population) %>% 
+  mutate(mnprcp_rear1 = lead(mnprcp_rear, 1),
+         medq_rear1 = lead(medq_rear, 1)) %>% 
+  select(Population, max5dprcp_spawn, maxq_spawn, mean_swe, mnprcp_rear1, medq_rear1) %>% 
+  mutate_each(funs(scale)) %>%
+  ungroup() %>% 
+  select(-Population) %>% 
+  pairs(upper.panel = panel.cor)
+
+
+saveRDS(pops_hyMets, "output/pops_hydroMets.rds")
+
+```
+
+```{r compare min and max fall streamflow}
+pops_hyMets %>% 
+  ggplot(aes(x = minq_spawn, y = maxq_spawn)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  stat_correlation() +
+  facet_wrap(~Population, scales = "free")
+
+ggsave("output/min and max fall streamflow plots.jpeg", width = 12, height = 8, units = "in")
+```
+
+
+
+```{r time series of hydro mets}
+pops_hyMets %>% 
+  filter(!grepl("Main", Population)) %>% 
+  pivot_longer(cols = max5dprcp_spawn:mean_swe) %>% 
+  ggplot(aes(x = year, y = value, color = Population)) +
+  geom_line() +
+  scale_x_continuous(breaks = c(1980, 2000)) +
+  facet_grid(cols = vars(Region), rows = vars(name), scales = "free_y")
+  
+```
+
+# Validation of hydro mets [not completed]
+
+```{r empirical streamflow data}
+flow_md <- readRDS("data/final_data/combined_data/flow_md.rds")
+flow_dat <- readRDS("data/final_data/combined_data/flow_dat.rds") %>% 
+  rename(sampleDate = date)
+
+chinook_flow_sites <- readRDS("output/flowPop_crosswalk.rds")
+
+chin_flow <- flow_dat %>% 
+  left_join(chinook_flow_sites) %>% 
+  filter(!is.na(location_short))
+
+chin_flow %>% distinct(SiteID)
+```
+
+```{r}
+pops_hyMets %>% 
+  distinct(Population) %>% 
+  left_join(chinook_flow_sites, by = c("Population" = "location_short"))
+```
+
+
+
+
+
+# Combined hydro and ST metrics
+
+Compare correlations between all freshwater metrics, Erik commented that high discharge years in Chena had low temps. There is a weak negative correlation between median discharge and CDD during rearing (r = .39). 
+
+```{r ST and hydro metrics correlations}
+
+pops_stMets <- readRDS("W:/Github/AYK-Chinook/temperature/output/pops_stMets_v3.rds")
+
+allMets <- left_join(pops_hyMets %>% select(Population, Region, year:mean_swe), 
+                     pops_stMets %>% select(Population, year = sampleYear, cdd_rear:cddGT17_migrate))
+
+jpeg("output/FW Covs V3 - Pairplot with cor.jpeg", quality = 100, width = 800, height = 800)
+allMets %>% 
+  arrange(Population, year) %>% 
+  group_by(Population) %>% 
+  mutate(mnprcp_rear1 = lead(mnprcp_rear, 1),
+         medq_rear1 = lead(medq_rear, 1),
+         cdd_rear1 = lead(cdd_rear, 1)) %>% 
+  select(Population, max5dprcp_spawn, maxq_spawn, mean_swe, mnprcp_rear1, medq_rear1, 
+         cdd_rear1, maxDaily_migrate, cddGT17_migrate) %>% 
+  mutate_each(funs(scale)) %>%
+  ungroup() %>% 
+  select(-Population) %>% 
+  pairs(upper.panel = panel.cor)
+dev.off()
+
+saveRDS(allMets, "output/pops_allMets_v3.rds")
+
+allMets %>% 
+  filter(year > 2016)
+
+```
+
+Explore years with high values and also any synchronous events.
+
+```{r all metrics patterns}
+#note that v3 must be most current since it runs through 2021
+allMets <- readRDS(file = "output/pops_allMets_v3.rds")
+
+allMets %>% 
+  pivot_longer(cols = max5dprcp_spawn:maxDaily_migrate) %>%
+  filter(name == "maxDaily_migrate") %>% 
+  ggplot(aes(x = year, y = value, color = Population)) +
+  geom_line() +
+  scale_x_continuous(breaks = c(1980, 2000)) #+
+  facet_grid(cols = vars(Region), rows = vars(name), scales = "free_y")
+  
+
+
+```
+
+# Hydro metrics over time
+
+```{r max fall flow over time}
+allMets <- readRDS("W:/Github/AYK-Chinook/precipitation/output/pops_allMets_v3.rds")
+
+allMets %>% 
+  ggplot(aes(x = year, y = maxq_spawn, color = Population)) +
+  geom_line() + 
+  geom_smooth(method = "lm") +
+  facet_wrap(~Population, scales = "free")
+
+
+allMets %>% 
+  nest(data = -Population) %>%
+  mutate(
+    fit = map(data, ~ lm(maxq_spawn ~ year, data = .x)),
+    tidied = map(fit, tidy)
+  ) %>%
+  unnest(tidied) %>% 
+  filter(term == "year", p.value <=0.05) %>% 
+  arrange(estimate) 
+
+allMets %>% 
+  filter(Population == "Chena") %>% 
+  select(maxq_spawn) %>% 
+  summarize(mean(maxq_spawn))
+
+38/307
+```
+
+
+
+```{r median summer flow over time}
+
+allMets %>% 
+  ggplot(aes(x = year, y = medq_rear)) +
+  geom_line() + 
+  geom_smooth(method = "lm") +
+  facet_wrap(~Population, scales = "free") +
+  guides(color = "none")
+
+allMets %>% 
+  nest(data = -Population) %>%
+  mutate(
+    fit = map(data, ~ lm(medq_rear ~ year, data = .x)),
+    tidied = map(fit, tidy)
+  ) %>%
+  unnest(tidied) %>% 
+  filter(term == "year") %>% 
+  arrange(p.value)
+  filter(term == "year", p.value <=0.05) %>% 
+  arrange(estimate) 
+  
+ allMets %>% 
+  filter(Population == "Tatlawiksuk") %>% 
+  select(medq_rear) %>% 
+  summarize(mean(medq_rear))
+
+-2.3/ 27
+```
+

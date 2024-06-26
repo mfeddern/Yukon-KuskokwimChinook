@@ -1,0 +1,1443 @@
+---
+title: "3_temperature_metrics"
+output: html_document
+date: "2022-12-13"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(ggpubr)
+library(tidyverse)
+library(lubridate)
+# library(zoo)
+# library(gridExtra)
+library(googlesheets4)
+library(broom)
+# library(TSA)
+# library(equatiomatic)
+# library(gridExtra)
+# library(grid)
+library(gbm)
+library(sf)
+
+jd_to_date <- function(jd_numeric) {
+  as.Date(as.character(jd_numeric), "%j")
+}
+
+```
+
+
+Steps:
+
+* Reading in models and complete covariate datasets from 1980-2020 or so to develop predictions for all months and years.
+* Then developing annual metrics. Population specific for migration where we have information on timing and can pick the most appropriate migration site. This would include Yukon or Kuskokwim sites. For Canadian Yukon populations, can develop population specific metric based on site (pilot station, rapids, or eagle), and then compare for each year to select the annual maximum mean daily temperature that was experienced.
+
+Notes on methods are in meeting to discuss run timing for Chinook pops in YK basins with Vanessa, Megan, Erik and Becky on January 19, 2023.
+
+* switched to daily mean models
+* calculating mean 5-95th percentile of run timing window for mainstem and tributary specific to each population 
+* filtering those ST time series by population specific window
+* calculating annual max metric from both habitats and selecting highest by year
+
+# Predictions
+
+```{r dataframe for predictions}
+
+airTemps <- readRDS(file = "C:/Users/rsshaftel/Documents/github/spatial/daymet_files/daymet_airTemps_33site.rds")
+glofas <- read_csv("C:/Users/rsshaftel/Documents/github/spatial/glofas_output/glofas_tempSites_discharge.csv")
+
+glofas_lg <- glofas %>% 
+  pivot_longer(cols = -date, names_to = "SiteID", values_to = "discharge") %>% 
+  rename(sampleDate = date)
+
+dm_swe1 <- read_csv("data/DAYMET_SWE_April1_1980-2018.csv") %>% 
+  rename(SiteID = name, sampleYear = year, mean_swe = mean_swe_kgm2,
+         max_swe = max_swe_kgm2)
+
+dm_swe2 <- read_csv("data/DAYMET_SWE_April1_2019-2021.csv") %>% 
+  rename(SiteID = name, sampleYear = year, mean_swe = mean_swe_kgm2,
+         max_swe = max_swe_kgm2)
+
+dm_swe <- bind_rows(dm_swe1, dm_swe2)
+
+names(airTemps)
+names(glofas_lg)
+names(dm_swe)
+
+summary(airTemps) # 80-21
+airTemps %>% distinct(SiteID) #33 st sites
+airTemps %>% distinct(month(sampleDate))
+airTemps %>% count(SiteID, sampleYear) %>% filter(n < 365) #these are complete so can fill in air temp lags easily
+
+glofas_lg %>% summary() #79-22
+glofas_lg %>% distinct(SiteID) # 33 st sites
+dm_swe %>% distinct(SiteID) #33 st sites
+summary(dm_swe) #1980-2021
+
+pred_dat <- left_join(airTemps, glofas_lg) %>% 
+  left_join(dm_swe %>% select(SiteID, sampleYear, mean_swe))
+
+pred_dat <- pred_dat %>% 
+  mutate(week = week(sampleDate),
+         season = case_when(week < 30 ~ "spring",
+                            TRUE ~ "fall")) 
+
+#add in appropriate temperature lags
+daily_mean_lags <- readRDS("output/dailyMean_tempLags.rds")
+
+#all sites there including BTF, which are twice daily manual measurements, may not want this site for migration
+pred_dat %>% distinct(SiteID) %>% left_join(daily_mean_lags)
+
+pred_dat <- left_join(pred_dat, daily_mean_lags %>% select(SiteID, lag)) %>%
+  group_by(SiteID, lag) %>% 
+  nest() %>%
+  mutate(airDT_lag = map(data, ~dplyr::lag(.$airDT, abs(lag)))) %>%
+  unnest() %>% 
+  filter(month(sampleDate) %in% 5:9, sampleYear %in% 1980:2021)
+
+pred_dat %>% 
+  filter(lag < 0)
+
+summary(pred_dat)
+
+saveRDS(pred_dat, "data/prediction_df.rds")
+```
+
+Read in models and predict over entire temporal domain.
+
+```{r make predictions}
+tempMean_brt <- readRDS("output/dailyMean_brtModels.rds")
+
+#need to get prediction data nested by site and added to tempMean_brt data frame.
+#otherwise trying to predict entire dataset with each site-specific model
+tempMean_brt <- left_join(tempMean_brt, pred_dat %>% 
+  nest(-SiteID) %>% 
+  rename(all_data = data))
+
+tempMean_brt <- tempMean_brt %>% 
+   mutate(allpred_fall1 = map2(.x = fit_fall1, .y = all_data, ~ predict(.x, newdata = .y %>% filter(season == "fall"))),
+          allpred_sp1 = map2(.x = fit_sp1, .y = all_data, ~ predict(.x, newdata = .y %>% filter(season == "spring"))))
+
+
+st_preds <- bind_rows(
+  bind_cols(
+    tempMean_brt %>% 
+      unnest(allpred_sp1) %>% 
+      select(SiteID, allpred_sp1),
+    tempMean_brt %>%
+      unnest(all_data) %>% 
+      filter(season == "spring") %>% 
+      select(season, yday, sampleDate, sampleYear)
+    ) %>% 
+    rename(preds = allpred_sp1),
+  bind_cols(
+    tempMean_brt %>% 
+      unnest(allpred_fall1) %>% 
+      select(SiteID, allpred_fall1),
+    tempMean_brt %>% 
+      unnest(all_data) %>% 
+      filter(season == "fall") %>% 
+      select(season, yday, sampleDate, sampleYear)
+    ) %>% 
+    rename(preds = allpred_fall1))
+
+
+st_preds %>% 
+  count(SiteID) #%>% 
+  summary()
+
+# saveRDS(st_preds, "output/ST_preds_dailyMean_1980-2021.rds")
+st_preds <- readRDS("output/ST_preds_dailyMean_1980-2021.rds")
+```
+
+Temp sites being used from google sheet.
+
+```{r temp sites}
+gs_sites <- read_sheet("https://docs.google.com/spreadsheets/d/1uS7iIqob7lP5zv94FCtnjfDlQgjBr-D1LCq4RGuLcbI/edit#gid=0",
+                    na = "NA")
+
+# sites <- sites %>% 
+#   separate_rows(Major_Spawning_Areas, sep = ",") %>% 
+#   mutate(Major_Spawning_Areas = gsub(" ", "", Major_Spawning_Areas))
+
+temp_site_selection <- c(gs_sites %>% 
+                           separate_rows(Temperature_spawning_rearing, sep = ", ") %>% 
+                           distinct(Temperature_spawning_rearing) %>%
+                           filter(!is.na(Temperature_spawning_rearing)) %>% 
+                           pull(Temperature_spawning_rearing),
+                         gs_sites %>% 
+                           separate_rows(Temperature_migration, sep = ", ") %>% 
+                           distinct(Temperature_migration) %>% 
+                           filter(!is.na(Temperature_migration)) %>% 
+                           pull(Temperature_migration)) 
+
+```
+
+
+Do some QA on the predictions to make sure they look right. Plots of predictions compared to real data. Everything looks good.
+
+```{r st preds QA}
+temp_dat <- readRDS("data/final_data/combined_data/temp_dat.rds")
+
+#fix site names (from models script)
+temp_dat <- temp_dat %>% 
+  mutate(SiteID = case_when(SiteID %in% c("OSM_Anvik", "usgs_15565400") ~ "usgs-osm_Anvik",
+                            SiteID %in% c("avf_09BC002", "avf_09BC003") ~ "avf_Blind",
+                            SiteID %in% c("avf_09AF001", "avf_09AF002") ~ "avf_Teslin",
+                            SiteID %in% c("avf_09AH003", "avf_09AH004") ~ "avf_Yukon_mm",
+                            TRUE ~ SiteID)) %>% 
+  filter(SiteID %in% temp_site_selection)
+
+temp_dat %>% 
+  distinct(SiteID)
+  count(SiteID, sampleYear)
+
+#all sites are in both data frames
+anti_join(temp_dat %>% distinct(SiteID), st_preds %>% distinct(SiteID))
+
+#predictions only for May-Sept so missing for months 1:4 and 11:12. Some pre-1980 data for summer months. 
+left_join(temp_dat %>% select(sampleDate, meanDT, SiteID, sampleYear), st_preds) %>% 
+  filter(is.na(preds)) %>% 
+  mutate(month = month(sampleDate)) %>% 
+  count(month, sampleYear) %>% 
+  arrange(month)
+
+#remove one missing meanDt record, filter on months and years gets rid of missing predictions
+st_preds_check <- left_join(temp_dat %>% select(sampleDate, meanDT, SiteID, sampleYear), st_preds) %>% 
+  filter(month(sampleDate) %in% 5:9, sampleYear %in% 1980:2021, !is.na(meanDT)) 
+
+st_sites <- st_preds_check %>% distinct(SiteID) %>% pull(SiteID)
+
+pdf("output/BRT preds vs meanDailyTemp.pdf")
+for(i in st_sites) {
+  p1 <- st_preds_check %>%  
+    filter(SiteID == i) %>%
+    complete(sampleYear, yday) %>% 
+    pivot_longer(cols = c(preds, meanDT)) %>% 
+    ggplot(aes(x = yday, y = value, color = name)) +
+    geom_line() +
+    facet_wrap(~sampleYear) +
+    labs(title = i)
+  print(p1)
+}
+dev.off()
+
+```
+
+
+# Metrics Version 1
+
+Notes from version 1 with fixed timing windows:
+
+Calculate CDD and maximum daily temperatures. For max daily temps, the window will be different for spawning and migration. For spawning, use August through November, for migration of US Yukon populations past pilot station, using June-July window per Eiler et al. 2014 Figure 12 (lower run timing), for CA Yukon populations moving past Rapids (a warmer site in almost all years), using July-August window. Rapids camp is at Rampart, ~ 760 river miles or 1200 km upriver (https://www.weather.gov/images/aprfc/var/svstal.jpg). Based on Eiler et al. 2014 Figure 4, Chinook are migrating ~ 60km/day so 20 days to get to Rapids, if entering river early to mid-June, not reaching rapids until July.
+
+Meeting on January 9, 2023: add in other possible migration covariates that aren't as reliant on a single maximum temperature. Max weekly max temps, count of days greater than 17, and CDD greater than 17. The July/August timing for the Canadian populations passing Rapids fish wheel at Rampart is likely too late, which Vanessa already told me and is also confirmed by data in Connors et al 2022. For now, go to a JJ window for both sites and I can dial that in a bit later.
+
+
+
+
+```{r st metrics version 1, eval = FALSE}
+
+#check if there are any below 0 predictions in May or September that should be removed from CDD calculation.
+st_preds %>% 
+  filter(month(sampleDate) %in% c(5, 9), preds < 0) %>% 
+  count(SiteID, sampleYear) %>% 
+  summarize(mean(n), range(n))
+
+
+st_mets <- st_preds %>% 
+  group_by(SiteID, sampleYear) %>%
+  arrange(SiteID, sampleDate) %>% 
+  mutate(max7d = rollapply(preds, 7, mean, align = "right", fill = NA),
+         ddGT17 = case_when(preds - 17 > 0 ~ preds - 17,
+                            TRUE ~ 0),
+         cumTemp = cumsum(ddGT17)) %>% 
+  summarize(cdd_rear = sum(preds),
+            maxDaily_spawn = max(preds[month(sampleDate) %in% 8:9]),
+            maxDaily_migrate = max(preds[month(sampleDate) %in% 6:7]),
+            maxWeekly_migrate = max(max7d[month(sampleDate) %in% 6:7]),
+            daysGT17_migrate = length(preds[preds > 17 & month(sampleDate) %in% 6:7]),
+            cddGT17_migrate = max(cumTemp[month(sampleDate) %in% 6:7]))
+
+  
+st_mets %>% 
+  pivot_longer(cols = cdd_rear:cddGT17_migrate) %>% 
+  filter(grepl("migrate", name), grepl("Rapids|Kalskag|1556", SiteID)) %>% 
+  ggplot(aes(sampleYear, value, color = SiteID)) +
+  geom_line() +
+  facet_wrap(~name, scales = "free_y")
+
+
+st_mets %>% 
+
+```
+
+
+Explore differences in temperatures at the Yukon mainstem sites. Looks like Rapids could be a pretty important predictor for populations that migrate through that part of the river. Probably mostly the Canadian Yukon stocks.
+
+```{r max daily in mainstem yukon}
+st_preds %>% 
+  group_by(SiteID, sampleYear) %>%
+  summarize(maxDaily = max(preds)) %>% 
+  filter(grepl("Yukon|Rapids|Eagle|155", SiteID)) %>%
+  mutate(Site = factor(case_when(grepl("Rapids", SiteID) ~ "Rapids",
+                          grepl("Eagle", SiteID) ~ "Eagle",
+                          grepl("usgs", SiteID) ~ "Pilot Station",
+                          TRUE ~ "Yukon at Carmacks"),
+                       levels = c("Pilot Station", "Rapids", "Eagle", "Yukon at Carmacks"))) %>% 
+  ggplot(aes(x = sampleYear, y = maxDaily, color = Site)) +
+  geom_line() +
+  geom_point() +
+  labs(x = "Year", title = "Predicted Maximum Mean Daily Stream Temperature",
+       y = "Stream Temperature (°C)") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggsave("output/Yukon mainstem Max mean daily ST.jpeg")
+
+```
+
+```{r max daily in kusko}
+st_preds %>% 
+  group_by(SiteID, sampleYear) %>%
+  summarize(maxDaily = max(preds)) %>% 
+  filter(grepl("Kalskag|Bethel|Sonar", SiteID)) %>%
+  ggplot(aes(x = sampleYear, y = maxDaily, color = SiteID)) +
+  geom_line() +
+  geom_point() +
+  labs(x = "Year", title = "Predicted Maximum Mean Daily Stream Temperature",
+       y = "Stream Temperature (°C)") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggsave("output/Kusko mainstem Max mean daily ST.jpeg")
+
+```
+
+```{r Figure S14 combined max daily mainstem temps}
+st_preds %>% 
+  group_by(SiteID, sampleYear) %>%
+  summarize(maxDaily = max(preds)) %>% 
+  filter(grepl("Yukon|Rapids|Eagle|155|Kalskag", SiteID)) %>%
+  mutate(Site = factor(case_when(grepl("Rapids", SiteID) ~ "Rapids",
+                          grepl("Eagle", SiteID) ~ "Eagle",
+                          grepl("usgs", SiteID) ~ "Pilot Station",
+                          grepl("Kalskag", SiteID) ~ "Kalskag",
+                          TRUE ~ "Yukon at Carmacks"),
+                       levels = c("Pilot Station", "Rapids", "Eagle", "Yukon at Carmacks", "Kalskag"))) %>% 
+  ggplot(aes(x = sampleYear, y = maxDaily, color = Site)) +
+  geom_line() +
+  geom_point() +
+  labs(x = "Year", title = "Predicted Maximum Mean Daily Stream Temperature",
+       y = "Stream Temperature (°C)") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggsave("output/Mainstem Sites Max mean daily ST.jpeg")
+```
+
+
+```{r trends in mainstem sites}
+st_preds %>% 
+  group_by(SiteID, sampleYear) %>%
+  summarize(maxDaily = max(preds)) %>% 
+  filter(grepl("Yukon|Rapids|Eagle|155|Kalskag", SiteID)) %>%
+  nest(data = -SiteID) %>%
+  mutate(
+    fit = map(data, ~ lm(maxDaily ~ sampleYear, data = .x)),
+    tidied = map(fit, tidy)
+  ) %>%
+  unnest(tidied)
+```
+
+
+Link temperature metrics to correct population and hypothesis. Currently, Megan is not including the Kuskokwim, Unalakleet, MainstemLower or MainstemMid, which are the major genetic groupings used by ADFG and would require some thought as to best assignment of a rearing or spawning metric.
+
+* for rearing hypothesis, want cdd from co-located temperature site for each tributary or genetic stock
+* for spawning hypothesis, want maxDaily from co-located temperature site for each tributary or genetic stock
+* for migration hypothesis, want max of maxDaily across all migration sites that each population migrates through. For Kuskokwim populations, only have Kalskag fish wheel as an option since don't have daily maximums for any other mainstem site. For Yukon US, using pilot station and for Yukon CA, using Rapids since that generally tends to be warmer and by a lot in some years.
+
+For three genetic substocks in Canada, there are two options for a stream temperature site to capture rearing and spawning conditions. 
+
+* MidMain - use avf_Yukon_mm because this is the mainstem temperature site. The other site is Tatchun creek, which is a small relative contributor of Chinook compared to the mainstem spawning area.
+* Pelly - options are Blind Creek or Pelly River. Probably use Pelly (avf_09BC001) because it would be more representative of the watershed and other spawning or rearing areas than one small creek. Blind also mostly below 15 and Pelly gets over 20 at times.
+* Stewart - use the McQuesten since this matches the major spawning area (avf_09DD002).
+
+For six populations without any ST data, replace with a ST site nearby so that Megan can include them in the model. (Alternative would be to run a DFA and use the common trend for sites with missing data within a region, e.g. CA Yukon or Kuskokwim.)
+
+* Holitna - replace with George, closest river and similar sized watershed
+* Holokuk and Oskawalik - also use George, these are slightly smaller watersheds, but also in close proximity to George, Aniak is also nearby but much larger.
+* Kisaralik - Kwethluk right next to it and similar size watershed.
+* Swift - Tatlawiksuk is right next to it and similar size watershed.
+* Nisling in Canada - Takhini river, nearby and pretty cold, Nisling is definitely glacial and probably cold.
+
+
+```{r data frame linking pops to SiteIDs}
+gs_sites <- read_sheet("https://docs.google.com/spreadsheets/d/1uS7iIqob7lP5zv94FCtnjfDlQgjBr-D1LCq4RGuLcbI/edit#gid=0",
+                    na = "NA")
+
+pops_stMets <- gs_sites %>% 
+  filter(!Population %in% c("Kuskokwim", "Unalakleet", "MainstemLower", "MainstemMid"))
+
+pops_stMets <- pops_stMets %>% 
+  mutate(Temperature_spawning_rearing = case_when(Population == "MidMain" ~ "avf_Yukon_mm",
+                                                  Population == "Pelly" ~ "avf_09BC001",
+                                                  Population == "Stewart" ~ "avf_09DD002",
+                                                  Population == "Holitna" ~ "OSM_George",
+                                                  Population == "Holokuk" ~ "OSM_George",
+                                                  Population == "Kisaralik" ~ "OSM_Kwethluk",
+                                                  Population == "Oskawalik" ~ "OSM_George",
+                                                  Population == "Swift" ~ "OSM_Tatlawiksuk",
+                                                  Population == "White-Donjek" ~ "avf_09AC002",
+                                                  TRUE ~ Temperature_spawning_rearing),
+         Temperature_migration = case_when(grepl("Kalskag", Temperature_migration) ~ "adfg_Kalskag_Fish_Wheel",
+                                           Region == "Yukon (CA)" ~ "adfg_Rapids",
+                                           grepl("usgs_15565447", Temperature_migration) ~ "usgs_15565447"))
+```
+
+```{r st metrics by population version 1, eval = FALSE}
+pops_stMets <- left_join(pops_stMets, st_mets %>% 
+                           select(SiteID, sampleYear, cdd_rear, maxDaily_spawn), 
+                         by = c("Temperature_spawning_rearing" = "SiteID")) %>%
+  left_join(st_mets %>% 
+              select(SiteID, maxDaily_migrate, maxWeekly_migrate, daysGT17_migrate, cddGT17_migrate, sampleYear), 
+            by = c("Temperature_migration" = "SiteID", "sampleYear" = "sampleYear"))
+
+#no missing data
+summary(pops_stMets)
+
+pops_stMets %>% 
+  arrange(Population, sampleYear) %>% 
+  group_by(Population) %>% 
+  mutate(cdd_rear1 = lead(cdd_rear, 1)) %>% 
+  select(Population, maxDaily_spawn:cdd_rear1) %>% 
+  mutate_each(funs(scale)) %>%
+  ungroup() %>% 
+  select(-Population) %>% 
+  pairs(upper.panel = panel.cor)
+
+saveRDS(pops_stMets, "output/pops_stMets.rds")
+
+```
+
+Save a copy of the empirical maximum of mean daily stream temperatures for Megan so she can do a post-hoc analysis with her model. She will need the temperature sites linked to populations so use the dataset above to link 1) ST sites for migration to pops 2) ST sites for rearing to pops.
+
+```{r empirical maxmnt linked to pops}
+
+siteData_MxMnT <- readRDS("output/siteData_msmnt.rds")
+
+siteData_MxMnT_rear <- left_join(siteData_MxMnT, pops_stMets %>% select(Population, Region, Temperature_spawning_rearing),
+          by = c("SiteID" = "Temperature_spawning_rearing")) %>% 
+  filter(!is.na(Population)) %>% 
+  mutate(site_type = "Rearing")
+
+siteData_MxMnT_migrate <- left_join(siteData_MxMnT, pops_stMets %>% select(Population, Region, Temperature_migration),
+          by = c("SiteID" = "Temperature_migration")) %>% 
+  filter(!is.na(Population)) %>% 
+  mutate(site_type = "Migration")
+
+bind_rows(siteData_MxMnT_rear, siteData_MxMnT_migrate) %>% 
+  saveRDS("output/siteData_msmnt_pops.rds")
+```
+
+
+
+
+
+
+
+# Population specific migration temperatures
+
+## Yukon
+
+Read in run timing information. No obvious trends in dates of timing.
+
+```{r run timing data}
+
+run_files <- list.files("data/run_timing", full.names = TRUE, pattern = "Yukon")
+
+runTiming <- map_df(run_files, function(x) read_csv(x, col_types = "c__ncccnnc")) %>% 
+  mutate(date = as.Date(paste(`Observation Month/Day`, `Observation Year`, sep = "/"), format = "%m/%d/%Y")) %>% 
+  select(fish_ct = `Fish Count...6`, date, Location) %>% 
+  mutate(year = year(date)) %>% 
+  filter(!is.na(fish_ct)) %>% 
+  mutate(jd = format(date, "%j") %>% as.numeric())
+
+runTiming_perc <- runTiming %>% 
+  arrange(Location, date) %>% 
+  group_by(Location, year) %>% 
+  summarize(enframe(quantile(jd, c(0.05, 0.25, 0.5, 0.75)), "quantile", "jd"))
+  
+runTiming_perc %>% 
+  ggplot(aes(x = year, y = jd, color = quantile)) +
+  geom_point() +
+  facet_wrap(~Location)
+
+runTim_summ <- runTiming_perc %>% 
+  # filter(year %in% 1994:2016) %>% 
+  mutate(quantile = factor(quantile, levels = c("5%", "25%", "50%", "75%"))) %>% 
+  group_by(Location, quantile) %>% 
+  summarize(minDate = min(jd) %>% as.character() %>% as.Date(format = "%j") %>% format("%m-%d"),
+            maxDate = max(jd) %>% as.character() %>% as.Date(format = "%j") %>% format("%m-%d"),
+            meanDate = mean(jd) %>% as.character() %>% as.Date(format = "%j") %>% format("%m-%d"))  
+
+
+runTim_summ %>% 
+  mutate(Location = factor(Location, levels = c("Pilot Station Sonar", "Andreafsky River (East Fork)",
+                              "Gisasa River", "Chena River", "Salcha River",
+                              "Eagle Sonar (Yukon/Canadian Border)"))) %>% 
+  ggplot() +
+  geom_point(aes(x = as.Date(meanDate, format = "%m-%d"), y = quantile)) +
+  geom_segment(aes(x = as.Date(minDate, format = "%m-%d"), xend = as.Date(maxDate, format = "%m-%d"), 
+                   y = quantile, yend = quantile)) +
+  facet_wrap(~Location)
+
+```
+
+Explore why the difference for Gisasa, calculating dates by hand when first fish count passes 25% threshold and I get the same results as his Table 1.
+
+```{r gisasa and EF Andreafsky comparison}
+gisasa <- read_csv(run_files[4], col_types = "c__ncccnnc") %>% 
+  mutate(date = as.Date(paste(`Observation Month/Day`, `Observation Year`, sep = "/"), format = "%m/%d/%Y")) %>% 
+  select(fish_ct = `Fish Count...8`, date, Location) %>% 
+  mutate(year = year(date)) %>% 
+  filter(!is.na(fish_ct)) %>% 
+  mutate(jd = format(date, "%j") %>% as.numeric())
+
+gisasa %>% 
+  arrange(date) %>% 
+  group_by(year) %>% 
+  mutate(cumct = cumsum(fish_ct),
+         totct = sum(fish_ct),
+         percent = cumct/totct) %>% 
+  filter(percent > 0.25) %>% 
+  slice(which.min(jd)) %>% 
+  ungroup() %>% 
+  summarize(mean(jd) %>% as.character() %>% as.Date(format = "%j"),
+            min(jd) %>% as.character() %>% as.Date(format = "%j"),
+            max(jd) %>% as.character() %>% as.Date(format = "%j"))
+
+
+#range for EF Andreafsky is a little off, but filtering on years doesn't change results
+
+runTiming_perc2 <- runTiming %>% 
+  # filter(year %in% 1994:2016) %>% 
+  arrange(Location, date) %>% 
+  group_by(Location, year) %>% 
+  mutate(cumct = cumsum(fish_ct),
+         totct = sum(fish_ct),
+         percent = cumct/totct*100)  
+  
+```
+
+For US populations, calculate four summary statistics:
+
+* mainstem entry date = day when 5% of population enters mainstem (5th percentile from trib - distance/movement rate)
+* mainstem exit date = day when 95% of population enters tributary (95th percentile from trib)
+* tributary entry date = day when 5% of population enters tributary (5th percentile from trib)
+* tributary exit date = August 31 (assuming no impacts of high temperatures on adults after August)
+
+In this code chunk, calculate the 5th and 95th percentiles of passage.
+
+```{r US pops run timing summary}
+
+runTiming_summ <- bind_rows(
+  runTiming_perc2 %>% 
+    filter(percent > 5) %>% 
+    slice(which.min(jd)) %>% 
+    group_by(Location) %>% 
+    summarize(meanDate = mean(jd)) %>%
+    mutate(percent = "5%"),
+  runTiming_perc2 %>% 
+    filter(percent > 95) %>% 
+    slice(which.min(jd)) %>% 
+    group_by(Location) %>% 
+    summarize(meanDate = mean(jd)) %>% 
+    mutate(percent = "95%")
+) %>% 
+  mutate(site = "Tributary") %>% 
+  rename(Loc_long = Location) %>% 
+  mutate(Location = case_when(grepl("Eagle", Loc_long) ~ "Eagle",
+                              grepl("Pilot", Loc_long) ~ "Pilot Station",
+                              grepl("Andreaf", Loc_long) ~ "EFAndreafsky",
+                              grepl("Gis", Loc_long) ~ "Gisasa",
+                              grepl("Chena", Loc_long) ~ "Chena",
+                              grepl("Salcha", Loc_long) ~ "Salcha"))
+
+runTiming_summ %>% 
+  mutate(Loc_long = factor(Location, levels = c("Pilot Station Sonar", "Andreafsky River (East Fork)",
+                              "Gisasa River", "Chena River", "Salcha River",
+                              "Eagle Sonar (Yukon/Canadian Border)"))) %>% 
+  ggplot() +
+  geom_point(aes(x = as.Date(as.character(meanDate), format = "%j"), y = Location, color = percent)) +
+  # facet_wrap(~Location, labeller = labeller(Location = label_wrap_gen(20))) +
+  labs(x = "Date", title = "Percentile of Run")
+  
+ggsave("output/US Run Timing.jpeg", width = 6, height = 4)
+```
+
+Canadian substocks: Brendan provided year and population specific values for when 50% (median) of populations passes the border. There is a single SD across all years and populations. It is 2286 km from the river mouth to the border, see calculation for Eagle below. Canadian pops travel at ~56 km a day (average across 8 substocks) so that could be 40 days from the mouth to the border. Can use these numbers to calculate their approximate thermal experience in the AK mainstem where temperatures are hottest.
+
+* 2286 km / 56 km / day = 41 days
+
+For Canadian populations, will use population specific movement rates to calculate mainstem entry below. First calculations are for 5th and 95th percentiles of passage at Eagle, similar to US pops above.
+
+```{r eagle run timing}
+#SD = 2.4, remove that bottom row
+canRuns <- read_csv("data/run_timing/arrivalTiming.ensemble.csv") %>% 
+  filter(!Year == "SD") %>% 
+  pivot_longer(cols = -Year, values_to = "median")
+
+qnorm(.25, 116, 2.4)
+
+canRuns <- canRuns %>% 
+  mutate(perc05 = qnorm(.05, median, 2.4),
+         perc95 = qnorm(.95, median, 2.4))
+
+canRuns_summ <- canRuns %>%
+  rename(Location = name) %>% 
+  select(-median) %>% 
+  pivot_longer(cols = perc05:perc95) %>% 
+  group_by(Location, name) %>% 
+  summarize(meanDate = mean(value)) %>%
+  mutate(site = "Eagle",
+         percent = case_when(grepl("05", name) ~ "5%",
+                             TRUE ~ "95%")) %>% 
+  select(-name)
+
+canRuns_summ %>% 
+  ggplot() +
+  geom_point(aes(x = as.Date(as.character(meanDate), format = "%j"), y = fct_reorder(Location, meanDate), color = percent)) +
+  labs(x = "Date", title = "Percentile of Run")
+  
+ggsave("output/Eagle Run Timing.jpeg", width = 6, height = 4)
+```
+
+Use the MERIT BASINS network to calculate downstream distances from tributaries.
+
+```{r downstream distances}
+
+merit <- read_sf(dsn = "W:\\GIS\\MERIT-Basins\\AK_MERIT_HYDRO.gdb", layer = "MERIT_HYDRO_AK")
+merit_df <- merit %>% st_drop_geometry() %>% as.data.frame()
+
+trib_comids <- data.frame(Site = c("Pilot Station", "Eagle", "EFAndreafsky", "Gisasa", "Chena", "Salcha",
+                                   "Carmacks", "LowerMainstem", "MiddleMainstem", "Pelly", "Stewart", 
+                                   "Teslin", "UpperLakesAndMainstem", "WhiteDonjek"),
+                          comid = c(81025423, 81014243, 81025705, 81013203, 81014439, 81015621,
+                                    81023615, 81010252, 81020037, 81021739, 81020046, 81027433, 81027431,
+                                    81020081),
+                          ds_distance = NA)
+
+#when nextdownid is empty
+# populate reaches vector with comid
+# get nextdownid for comid == i
+# replace i with nextdownid
+
+
+for(i in 1:nrow(trib_comids)) {
+  ds_reaches <- vector()
+  comid <- trib_comids %>% slice(i) %>% pull(comid)
+  while(comid != 0) {
+    ds_id <- merit_df %>% filter(COMID == comid) %>% pull(NextDownID)
+    ds_reaches <- c(ds_reaches, ds_id)
+    comid <- ds_id
+  }
+  ds_dist <- merit_df %>% 
+    filter(COMID %in% ds_reaches) %>% 
+    summarize(ds_distance = sum(lengthkm)) %>% 
+    pull(ds_distance)
+  trib_comids[i, "ds_distance"] <- ds_dist
+  rm(ds_dist)
+}
+
+trib_comids
+```
+
+Summary statistics for all populations based on movement rates:
+
+* mainstem entry date = day when 5% of population enters mainstem (5th percentile from trib/Eagle - distance/movement rate)
+* mainstem exit date = day when 95% of population enters tributary (95th percentile from trib)
+* tributary entry date = day when 5% of population enters tributary (5th percentile from trib)
+* tributary exit date = August 31 (assuming no impacts of high temperatures on adults after August)
+
+For US populations, use movement rates to calculate mainstem entry timing based on distances from tributary to Yukon river mouth.
+For Canadian populations, use movement rates to calculate both mainstem and tributary timing based on distances from Eagle.
+
+```{r yukon timing statistics}
+
+#add in movement rates from Eiler et al. 2015
+usTim_stats <- runTiming_summ %>% 
+  filter(!grepl("Pilot|Eagle", Location)) %>% 
+  left_join(trib_comids, by = c("Location" = "Site")) %>%
+  pivot_wider(names_from = percent, values_from = meanDate, names_prefix = "percent") %>%
+  rename(perc5 = `percent5%`, perc95 = `percent95%`) %>% 
+  mutate(movement_rate = case_when(Location == "Salcha" ~ 45,
+                                    Location == "Chena" ~ 45,
+                                    Location == "Gisasa" ~ 41,
+                                    Location == "EFAndreafsky" ~ 34),
+         ms_start_date = perc5 - (ds_distance/movement_rate),
+         ms_end_date = perc95,
+         trib_start_date = perc5,
+         trib_end_date = 243) 
+
+#note Eagle to river mouth is 2287 km
+canTim_stats <- canRuns_summ %>% 
+  left_join(trib_comids, by = c("Location" = "Site")) %>%
+  pivot_wider(names_from = percent, values_from = meanDate, names_prefix = "percent") %>%
+  rename(perc5 = `percent5%`, perc95 = `percent95%`) %>% 
+  mutate(movement_rate = case_when(Location == "Carmacks" ~ 53,
+                                    Location == "LowerMainstem" ~ 62,
+                                    Location == "MiddleMainstem" ~ 58,
+                                    Location == "Pelly" ~ 57,
+                                   Location == "Stewart" ~ 57,
+                                   Location == "Teslin" ~ 55,
+                                   Location == "UpperLakesAndMainstem" ~ 52,
+                                   Location == "WhiteDonjek" ~ 59),
+         ms_start_date = perc5 - (2287/movement_rate),
+         ms_end_date = perc95 + (ds_distance - 2287)/movement_rate, 
+         trib_start_date = perc5 + (ds_distance - 2287)/movement_rate,
+         trib_end_date = 243) 
+
+yukonTim_stats <- bind_rows(usTim_stats, canTim_stats)
+
+
+jd_to_date(243)
+
+yukonTim_stats %>% 
+  ggplot() +
+  geom_segment(aes(x = jd_to_date(ms_start_date), xend = jd_to_date(ms_end_date), 
+                   y = fct_reorder(Location, ms_start_date), yend = Location), size = 2, color = "gray") +
+  geom_segment(aes(x = jd_to_date(trib_start_date), xend = jd_to_date(trib_end_date), y = Location, yend = Location), width = 1, color = "blue") +
+  scale_x_date(date_labels = "%m-%d") +
+  theme_bw() +
+  labs(x = "Run Timing", y = "Populations")
+  
+```
+
+
+Distance to furthest upstream spawning area in the Yukon at Klinkit Creek in Teslin drainage.
+
+```{r klinkit creek upstream distance}
+
+ds_reaches <- vector()
+comid <- 81035103
+while(comid != 0) {
+  ds_id <- merit_df %>% filter(COMID == comid) %>% pull(NextDownID)
+  ds_reaches <- c(ds_reaches, ds_id)
+  comid <- ds_id
+}
+klinkit_ds_dist <- merit_df %>% 
+  filter(COMID %in% ds_reaches) %>% 
+  summarize(ds_distance = sum(lengthkm)) %>% 
+  pull(ds_distance)
+
+
+```
+
+
+## Kuskokwim
+
+```{r Kusko run timing data}
+
+kusko_run_files <- list.files("data/run_timing", full.names = TRUE, pattern = "Kusko")
+
+runTimingKusko <- map_df(kusko_run_files, function(x) read_csv(x, col_types = "c__ncccnnc")) %>% 
+  mutate(date = as.Date(paste(`Observation Month/Day`, `Observation Year`, sep = "/"), format = "%m/%d/%Y")) %>% 
+  select(fish_ct = `Fish Count...6`, date, Location) %>% 
+  mutate(year = year(date)) %>% 
+  filter(!is.na(fish_ct)) %>% 
+  mutate(jd = format(date, "%j") %>% as.numeric())
+
+
+runTimingKusko_perc <- runTimingKusko %>% 
+  arrange(Location, date) %>% 
+  group_by(Location, year) %>% 
+  mutate(cumct = cumsum(fish_ct),
+         totct = sum(fish_ct),
+         percent = cumct/totct*100)  
+  
+runTimingKusko_perc %>%
+  filter(jd < 200) %>% 
+  ggplot(aes(x = year, y = as.Date(jd, format = "%j"), color = percent)) +
+  geom_point() +
+  facet_wrap(~Location)
+
+```
+
+```{r Kusko timing summary}
+
+runTimingKusko_summ <- bind_rows(
+  runTimingKusko_perc %>% 
+    filter(percent > 5) %>% 
+    slice(which.min(jd)) %>% 
+    group_by(Location) %>% 
+    summarize(meanDate = mean(jd)) %>%
+    mutate(percent = "5%"),
+  runTimingKusko_perc %>% 
+    filter(percent > 95) %>% 
+    slice(which.min(jd)) %>% 
+    group_by(Location) %>% 
+    summarize(meanDate = mean(jd)) %>% 
+    mutate(percent = "95%")
+) %>% 
+  mutate(site = "Tributary") %>% #need below if renaming to match distances data frame
+  rename(Loc_long = Location) %>% 
+  mutate(Location = case_when(grepl("George", Loc_long) ~ "George",
+                              grepl("Good", Loc_long) ~ "Goodnews, MF",
+                              grepl("Kogruk", Loc_long) ~ "Kogrukluk",
+                              grepl("Kweth", Loc_long) ~ "Kwethluk",
+                              grepl("Takot", Loc_long) ~ "Takotna",
+                              grepl("Tatlaw", Loc_long) ~ "Tatlawiksuk",
+                              grepl("Tuluk", Loc_long) ~ "Tuluksak",
+                              grepl("Aniak", Loc_long) ~ "Aniak",
+                              grepl("Holitna", Loc_long) ~ "Holitna",
+                              grepl("Holokuk", Loc_long) ~ "Holokuk",
+                              grepl("Kisaralik", Loc_long) ~ "Kisaralik",
+                              grepl("Oskawalik", Loc_long) ~ "Oskawalik",
+                              grepl("Pitka", Loc_long) ~ "Pitka",
+                              grepl("Swift", Loc_long) ~ "Swift"))
+
+```
+
+
+```{r Kuskokwim downstream distances}
+
+kusko_comids <- st_read(dsn = "W:\\GIS\\AYK_Chinook\\AYK_Chinook.gdb", 
+                        layer = "proc_paper_esc_s_SpatialJoin") %>% 
+  st_drop_geometry() %>% 
+  select(site, COMID)
+
+
+#when nextdownid is empty
+# populate reaches vector with comid
+# get nextdownid for comid == i
+# replace i with nextdownid
+
+
+for(i in 1:nrow(kusko_comids)) {
+  ds_reaches <- vector()
+  comid <- kusko_comids %>% slice(i) %>% pull(COMID)
+  while(comid != 0) {
+    ds_id <- merit_df %>% filter(COMID == comid) %>% pull(NextDownID)
+    ds_reaches <- c(ds_reaches, ds_id)
+    comid <- ds_id
+  }
+  result <- merit_df %>% 
+    filter(COMID %in% ds_reaches) %>% 
+    summarize(ds_distance = sum(lengthkm)) %>% 
+    pull(ds_distance)
+  kusko_comids[i, "ds_distance"] <- result
+  rm(result)
+}
+
+kusko_comids %>% 
+  arrange(ds_distance)
+```
+
+
+```{r save downstream distances for Megan}
+
+trib_comids
+kusko_comids
+
+bind_rows(trib_comids, kusko_comids %>% rename(Site = site, comid = COMID)) %>% 
+  write_csv("output/downstream_distances.csv")
+
+```
+
+
+
+```{r kusko timing statistics}
+kuskoTim_stats <- runTimingKusko_summ %>% 
+  left_join(kusko_comids, by = c("Location" = "site")) %>%
+  pivot_wider(names_from = percent, values_from = meanDate, names_prefix = "percent") %>%
+  rename(perc5 = `percent5%`, perc95 = `percent95%`) %>% 
+  mutate(movement_rate = 46,
+         ms_start_date = perc5 - (ds_distance/movement_rate),
+         ms_end_date = perc95,
+         trib_start_date = perc5,
+         trib_end_date = 243) 
+```
+
+
+
+Distance to furthest upstream spawning area in the Kusko at Highpower Creek, trib to Swift Fork Kuskokwim.
+
+```{r Highpower creek upstream distance}
+
+ds_reaches <- vector()
+comid <- 81018728
+while(comid != 0) {
+  ds_id <- merit_df %>% filter(COMID == comid) %>% pull(NextDownID)
+  ds_reaches <- c(ds_reaches, ds_id)
+  comid <- ds_id
+}
+highpower_ds_dist <- merit_df %>% 
+  filter(COMID %in% ds_reaches) %>% 
+  summarize(ds_distance = sum(lengthkm)) %>% 
+  pull(ds_distance)
+
+
+```
+
+
+
+## Run timing and final metrics
+
+Fix location names so they match the populations Megan is using. Carry over run timing information for five Kuskokwim populations from nearby locations.
+
+```{r run timing figure}
+
+runTim_stats <- bind_rows(yukonTim_stats, kuskoTim_stats) %>% 
+  mutate(Population = case_when(Location == "LowerMainstem" ~ "LwrMain",
+                                Location == "MiddleMainstem" ~ "MidMain",
+                                Location == "UpperLakesAndMainstem" ~ "UprLksMain",
+                                Location == "WhiteDonjek" ~ "White-Donjek",
+                                Location == "Goodnews, MF" ~ "Goodnews",
+                                TRUE ~ Location))
+
+runTim_replace <- bind_rows(runTim_stats %>% 
+  filter(Population == "George") %>% 
+  mutate(Population = "Holitna"),
+  runTim_stats %>% 
+  filter(Population == "George") %>% 
+  mutate(Population = "Holokuk"),
+  runTim_stats %>% 
+  filter(Population == "George") %>% 
+  mutate(Population = "Oskawalik"),
+  runTim_stats %>% 
+  filter(Population == "Kwethluk") %>% 
+  mutate(Population = "Kisaralik"),
+  runTim_stats %>% 
+  filter(Population == "Tatlawiksuk") %>% 
+  mutate(Population = "Swift"))
+
+runTim_stats <- bind_rows(runTim_stats, runTim_replace)
+
+
+cols <- c("Mainstem" = "black", "Tributary" = "blue")
+
+#not showing by population, where 6 sites were filled in. These are 21 actual sites with information.
+runTim_stats %>% 
+  ggplot() +
+  geom_segment(aes(x = jd_to_date(ms_start_date), xend = jd_to_date(ms_end_date), 
+                   y = fct_reorder(Location, ms_start_date), yend = Location, color = "Mainstem"), size = 1.5) +
+  geom_segment(aes(x = jd_to_date(trib_start_date), xend = jd_to_date(trib_end_date), 
+                   y = Location, yend = Location, color = "Tributary"), size = 1) +
+  scale_x_date(date_labels = "%m-%d") +
+  scale_color_manual(name = "Timing Windows", values = cols) +
+  theme_bw() +
+  labs(x = "Run Timing", y = "Populations")
+
+ggsave("output/runTiming.jpeg")
+
+
+# saveRDS(runTim_stats, "output/runTiming_allSites.rds")
+runTim_stats <- readRDS("output/runTiming_allSites.rds")
+```
+
+Working on creating stream temperature metrics that are based off of population specific timing windows in mainstem and tributaries. It might be easiest to link each population to its migration site and tributary site in separate data frames. Calculate the thermal stress statistics for each dataframe, combine, and pick highest of two. At least for thermal stress. Juvenile rearing hypothesis metric from tributary data frame needs editing, but then can be combined with the new thermal stress metric. 
+
+Merging ST predictions to tributary habitats for each population:
+
+* cdd_rear - cumulative degree days > 0 from May through September. Note replaced 6 sites with missing ST data with sites nearby.
+* maxDaily_migrate_trib - filter preds to population specific timing windows and calculate maximum of mean daily temps. Use same 6 sites nearby to get timing windows and calculate metric.
+
+Merging ST predictions to mainstem habitats for each population:
+
+* maxDaily_migrate_main - filter preds to population specific timing windows and calculate maximum of mean daily temps.
+
+
+
+
+```{r ST metrics with timing windows}
+cdd_rear <- left_join(st_preds, pops_stMets %>% distinct(Population, Region, Temperature_spawning_rearing),
+          by = c("SiteID" = "Temperature_spawning_rearing")) %>% 
+  filter(!is.na(Population), preds > 0) %>% #exclude any negative preds in May or Sept
+  group_by(Region, Population, sampleYear) %>% 
+  summarize(cdd_rear = sum(preds)) #already filtered to May-Sept so sum all temps
+
+trib_mets <- left_join(st_preds, pops_stMets %>% distinct(Population, Region, Temperature_spawning_rearing),
+          by = c("SiteID" = "Temperature_spawning_rearing")) %>% 
+  filter(!is.na(Population)) %>% 
+  # distinct(SiteID, Population) #checking that it all looks correct
+  left_join(runTim_stats %>% select(Population, trib_start_date, trib_end_date)) %>% 
+  group_by(Population) %>% 
+  filter(yday > trib_start_date, yday < trib_end_date) %>%  
+  arrange(Population, sampleDate) %>% 
+  group_by(Region, Population, sampleYear) %>%
+  mutate(ddGT17 = case_when(preds - 17 > 0 ~ preds - 17,
+                            TRUE ~ 0),
+         cumTemp = cumsum(ddGT17)) %>% 
+  summarize(maxDaily_migrate_trib = max(preds),
+            cddGT17_trib = max(cumTemp))
+
+main_mets <- left_join(st_preds, pops_stMets %>% distinct(Population, Region, Temperature_migration),
+          by = c("SiteID" = "Temperature_migration")) %>% 
+  filter(!is.na(Population)) %>% 
+  left_join(runTim_stats %>% select(Population, ms_start_date, ms_end_date)) %>% 
+  group_by(Population) %>% 
+  filter(yday > ms_start_date, yday < ms_end_date) %>% 
+  arrange(Population, sampleDate) %>% 
+  group_by(Region, Population, sampleYear) %>%
+  mutate(ddGT17 = case_when(preds - 17 > 0 ~ preds - 17,
+                            TRUE ~ 0),
+         cumTemp = cumsum(ddGT17)) %>% 
+  summarize(maxDaily_migrate_main = max(preds),
+            cddGT17_main = max(cumTemp))
+
+#Are there any tributary max daily temps higher than the mainstem metrics? 
+# (This question pertains to migration only)
+#Mostly for the Kuskokwim tributaries
+
+left_join(trib_mets, main_mets) %>%
+  mutate(diff = maxDaily_migrate_main - maxDaily_migrate_trib) %>% 
+  arrange(diff) %>% 
+  select(Region, Population, sampleYear, diff) %>% 
+  filter(diff < 0) %>% 
+  ggplot(aes(sampleYear, diff)) +
+  geom_point() +
+  facet_wrap(vars(Region, Population))
+
+#which tribs are warmer at least half the years?
+left_join(trib_mets, main_mets) %>% 
+  mutate(diff = maxDaily_migrate_main - maxDaily_migrate_trib) %>% 
+  arrange(diff) %>% 
+  select(Region, Population, sampleYear, diff) %>% 
+  filter(diff < 0) %>% 
+  count(Population) %>% 
+  arrange(desc(n))
+
+#calling this version 3 to match methods
+# (v2 was when I added new ST covariates after V1)
+pops_stMets_v3 <- left_join(cdd_rear, trib_mets) %>% left_join(main_mets) %>% 
+  rowwise() %>% 
+  mutate(maxDaily_migrate = max(maxDaily_migrate_trib, maxDaily_migrate_main),
+         cddGT17 = max(cddGT17_trib, cddGT17_main))
+
+pops_stMets_v3 %>% 
+  select(Region, Population, sampleYear, cdd_rear, maxDaily_migrate, cddGT17_migrate = cddGT17) %>% 
+  saveRDS(file = "output/pops_stMets_v3.rds")
+
+#checking years since Megan wants through 2021 or 2022 if possible -- all there
+# stMets <- readRDS("output/pops_stMets_v3.rds")
+# stMets %>% summary()
+```
+
+```{r evaluting timing of max temps at Kalskag}
+
+st_preds %>% 
+  filter(grepl("Kalskag", SiteID)) %>% 
+  group_by(sampleYear) %>% 
+  top_n(1, preds) %>% 
+  mutate(day = format(sampleDate, "%m-%d")) %>% 
+  ggplot(aes(x = as.Date(day, format = "%m-%d"), y = preds, color = sampleYear)) +
+  geom_point() +
+  theme_bw() +
+  labs(x = "Date", y = "Max Temp.", color = "Year", title = "Kalskag Temps.")
+
+ggsave("output/timing of max temps at Kalskag.jpeg")
+```
+
+
+
+```{r cdd in mainstem and tribs}
+pops_stMets_v2 %>% 
+  ggplot(aes(x = sampleYear)) +
+  geom_line(aes(y = cddGT17_trib)) +
+  geom_line(aes(y = cddGT17_main), color = "blue") +
+  facet_wrap(~Population)
+
+
+pops_stMets_v2 %>% 
+  group_by(Population) %>% 
+  summarize(meancdd = mean(cddGT17_main),
+            meancddtrib = mean(cddGT17_trib)) %>% 
+  arrange(desc(meancdd)) %>% 
+  ggplot(aes(y = fct_reorder(Population, meancdd))) +
+  geom_point(aes(x = meancdd)) +
+  geom_point(aes(x = meancddtrib), color = "blue") 
+  
+
+
+
+```
+
+
+
+# Dotplots of ST metrics by Population
+
+In the main text, there are some references to which sites/populations have the warmest versus coldest temperatures. It would help to be able to reference a figure that shows these relationships between absolute temperature metrics in the supplement (S4 for freshwater covariates).
+
+```{r different final covariate files and summaries}
+# stMets <- readRDS("output/pops_stMets_v3.rds")
+#checking against the master file of all covariates I sent to Megan.
+allMets <- readRDS("W:/Github/AYK-Chinook/precipitation/output/pops_allMets_v3.rds")
+allMets_feb <- readRDS("W:/Github/AYK-Chinook/precipitation/output/pops_allMets_v3_030323.rds")
+
+allMets %>% 
+  ungroup() %>% 
+  filter(maxDaily_migrate > 18.5, year < 2017) %>% 
+  count(Region, year) %>% #to investigate which years
+  count(Region) #to compare regions
+
+left_join(allMets %>% select(Population, year, max_april = maxDaily_migrate), 
+          allMets_feb %>% select(Population, year, max_feb = maxDaily_migrate)) %>% 
+  ggplot(aes(x = max_feb, y = max_april)) + 
+  geom_point()
+
+
+allMets %>% 
+  ungroup() %>% 
+  filter(maxDaily_migrate > 18, year < 2017) %>% 
+  count(Region, Population) %>% #no. of years/pop
+  arrange(desc(n)) %>% #can see how regions are clearly ordered here 
+  group_by(Region) %>% 
+  summarize(ave_yrs_gt18 = mean(n)) %>% #to compare regions
+  mutate(percent_yrs_gt18 = ave_yrs_gt18/35*100)
+
+```
+
+```{r dotplot of ST migration metric}
+
+#faceted by region
+stMets %>% 
+  group_by(Region, Population) %>%
+  #use mutate so I can keep 2019 in as a separate point
+  mutate(mean_mig = mean(maxDaily_migrate),
+            min_mig = min(maxDaily_migrate),
+            max_mig = max(maxDaily_migrate)) %>% 
+  ggplot() +
+  geom_point(aes(x = mean_mig, y = fct_reorder(Population, mean_mig))) +
+  geom_segment(aes(x = min_mig, xend = max_mig, y = fct_reorder(Population, mean_mig),
+                   yend = fct_reorder(Population, mean_mig))) +
+  geom_point(aes(x = maxDaily_migrate, y = fct_reorder(Population, mean_mig)), 
+             data = . %>% filter(sampleYear == 2019), color = "red") +
+  facet_wrap(~Region, scales = "free_y")
+
+#region in label, all sites ordered (I like this one better)
+stMets %>% 
+  group_by(Region, Population) %>%
+  #use mutate so I can keep 2019 in as a separate point
+  mutate(mean_mig = mean(maxDaily_migrate),
+            min_mig = min(maxDaily_migrate),
+            max_mig = max(maxDaily_migrate),
+         y_lab = paste0(Region, ": ", Population)) %>% 
+  ggplot() +
+  geom_point(aes(x = mean_mig, y = fct_reorder(y_lab, mean_mig))) +
+  geom_segment(aes(x = min_mig, xend = max_mig, y = fct_reorder(y_lab, mean_mig),
+                   yend = fct_reorder(y_lab, mean_mig))) +
+  geom_point(aes(x = maxDaily_migrate, y = fct_reorder(y_lab, mean_mig)), 
+             data = . %>% filter(sampleYear == 2019), color = "red") +
+  labs(x = "Max. Daily Stream Temperature (°C)", title = "Migration Metric") +
+  theme_bw() +
+  theme(axis.title.y = element_blank())
+
+ggsave("output/dailyMax metric.jpeg", width = 6, height = 6, units = "in")
+```
+
+
+Note that lower main is the coldest because it is using the Klondike River temps, the largest spawning population in that genetic substock.
+
+```{r dotplot of rearing metric}
+
+stMets %>% 
+  group_by(Region, Population) %>%
+  #use mutate so I can keep 2019 in as a separate point
+  mutate(mean_rear = mean(cdd_rear),
+            min_rear = min(cdd_rear),
+            max_rear = max(cdd_rear),
+         y_lab = paste0(Region, ": ", Population)) %>% 
+  ggplot() +
+  geom_point(aes(x = mean_rear, y = fct_reorder(y_lab, mean_rear))) +
+  geom_segment(aes(x = min_rear, xend = max_rear, y = fct_reorder(y_lab, mean_rear),
+                   yend = fct_reorder(y_lab, mean_rear))) +
+  geom_point(aes(x = cdd_rear, y = fct_reorder(y_lab, mean_rear)), 
+             data = . %>% filter(sampleYear == 2019), color = "red") +
+  labs(x = "Cumulative Degree Days (°C)", title = "Rearing Metric") +
+  theme_bw() +
+  theme(axis.title.y = element_blank())
+
+ggsave("output/cdd rearing metric.jpeg", width = 6, height = 6, units = "in")
+
+```
+
+
+```{r trends in tributary CDD metric over time}
+
+allMets %>% 
+  ggplot(aes(x = year, y = cdd_rear, color = Population)) +
+  geom_line() +
+  geom_smooth(method = "lm") +
+  facet_wrap(~Population)
+
+
+allMets %>% 
+  nest(data = -Population) %>%
+  mutate(
+    fit = map(data, ~ lm(cdd_rear ~ year, data = .x)),
+    tidied = map(fit, tidy)
+  ) %>%
+  unnest(tidied) %>% 
+  filter(term == "year", p.value <=0.05) %>% 
+  arrange(estimate)
+```
+
+
+
+# Comparing breakup timing to ST metrics
+
+Email from Vanessa on 4/17:
+In particular, the Yukon River line has a hump shape when ice break up is first earlier than 5 May in the late 1980s and early 1990s.... I think that lines of with some of Becky's water temperature hindcast results too??? 
+Becky, I would be interested to see how these break up dates line up with your max water temperature estimates. I've thought that earlier break ups are one of the reasons the Yukon River can get so warm...
+
+Megan already looked into this and shared a plot over google chat, but I'll redo and reply to the email. Here is where the breakup data are located: file path from the project is "'breakup/output/breakupAYK.csv'"
+
+```{r breakup time series}
+st_preds <- readRDS("output/ST_preds_dailyMean_1980-2021.rds")
+breakup <- read_csv("W:/Github/AYK-Chinook/breakup/output/breakupAYK.csv")
+
+
+breakup %>% distinct(River, NearestCommunity) %>% arrange(River)
+
+dawson <- breakup %>% 
+  filter(grepl("Dawson", NearestCommunity))
+
+st_preds %>% distinct(SiteID) #adfg_Rapids and usgs_15565447 is Pilot Station
+
+
+yukon_maxDaily <- st_preds %>% 
+  group_by(SiteID, sampleYear) %>%
+  summarize(maxDaily = max(preds)) %>% 
+  filter(grepl("Yukon|Rapids|Eagle|155", SiteID)) %>%
+  mutate(Site = factor(case_when(grepl("Rapids", SiteID) ~ "Rapids",
+                          grepl("Eagle", SiteID) ~ "Eagle",
+                          grepl("usgs", SiteID) ~ "Pilot Station",
+                          TRUE ~ "Yukon at Carmacks"),
+                       levels = c("Pilot Station", "Rapids", "Eagle", "Yukon at Carmacks"))) 
+
+scaleFactor <- max(yukon_maxDaily$maxDaily) / max(dawson$DOY)
+
+yukon_maxDaily %>% 
+  ggplot(aes(x = sampleYear, y = maxDaily, color = Site)) +
+  geom_line() +
+  geom_point() +
+  geom_line(aes(x = Year, y = DOY * scaleFactor), data = dawson %>% filter(Year > 1979), color = "black", linetype = 2) +
+  geom_point(aes(x = Year, y = DOY * scaleFactor), data = dawson %>% filter(Year > 1979), color = "black") +
+  scale_y_continuous(name = "Max Daily Stream Temp. (°C)", sec.axis = sec_axis(~./scaleFactor, name = "Dawson Breakup Timing (DOY)")) +
+  labs(x = "Year", title = "Predicted Maximum Mean Daily Stream Temperature",
+       y = "Stream Temperature (°C)") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggsave("output/breakup and Yukon max temps time series.jpeg", width = 9, height = 7, units = "in")
+
+
+left_join(yukon_maxDaily, dawson %>% select(Year, DOY), by = c("sampleYear" = "Year")) %>% 
+  ggplot(aes(x = DOY, y = maxDaily)) + 
+  geom_point() +
+  geom_smooth(method = "lm") +
+  stat_cor() +
+  facet_wrap(~Site) +
+  labs(y = "Max Daily Stream Temp. (°C)", x = "Dawson Breakup Timing (DOY)")
+
+ggsave("output/breakup versus Yukon Max Daily temps.jpeg")
+```
+
+
+
+# Validation with Fish Temperature dataset by Eiler
+
+Read in fish temperatures.
+
+```{r fish validation maxmnt}
+chin1 <- read_csv("D:/ACCS_Desktop/S_DRIVE/Stream Temperature Data/NOAA_Yukon_Chinook_Eiler/ABL_Yukon Chinook Salmon Swimming Depth and Water Temperature 2002-2004_data 2002-2003.csv")
+
+chin2 <- read_csv("D:/ACCS_Desktop/S_DRIVE/Stream Temperature Data/NOAA_Yukon_Chinook_Eiler/ABL_Yukon Chinook Salmon Swimming Depth and Water Temperature 2002-2004_data 2004.csv")
+
+chin_dat <- bind_rows(chin1, chin2) %>% 
+  mutate(sampleDate = as.Date(substr(date, 1, 10), format = "%m/%d/%Y"))
+
+#dates fixed.
+summary(chin_dat)
+
+chin_dat %>% distinct(fishno)
+chin_dat %>% distinct(reach)
+chin_dat %>% distinct(stock)
+
+chin_maxMnT <- chin_dat %>% 
+  # filter(reach == "Yukon 3") %>% 
+  mutate(year = year(sampleDate)) %>% 
+  group_by(stock, year, fishno, sampleDate) %>% 
+  summarize(meanDT = mean(temp, na.rm = TRUE)) %>% 
+  group_by(stock, year, fishno) %>% 
+  summarize(maxMnT = max(meanDT, na.rm = TRUE)) %>% 
+  mutate(Population = case_when(stock == "Big Salmon" ~ "Carmacks",
+                                stock == "Klondike" ~ "LwrMain",
+                                stock == "Tatchun" ~ "MidMain",
+                                stock == "White" ~ "White-Donjek",
+                                TRUE ~ stock))
+
+right_join(chin_maxMnT %>% select(Population, year, maxMnT, fishno), 
+          pops_stMets_v2, by = c("Population" = "Population", "year" = "sampleYear")) %>%
+  filter(!is.na(maxMnT)) %>%
+  mutate(sqdiff = (maxMnT - maxDaily_migrate)^2) %>% 
+  ungroup() %>% 
+  summarize(sqrt(mean(sqdiff))) #rmse = 1.0C
+
+right_join(chin_maxMnT %>% select(Population, year, maxMnT, fishno), 
+          pops_stMets_v2, by = c("Population" = "Population", "year" = "sampleYear")) %>%
+  filter(!is.na(maxMnT)) %>% 
+  ggplot(aes(x = maxDaily_migrate, y = maxMnT)) +
+  geom_point(aes(color = stock, shape = as.factor(year))) +
+  geom_smooth(method = "lm") +
+  stat_cor(aes(label = after_stat(rr.label)), color = "red", geom = "label") +
+  geom_abline(aes(intercept = 0, slope = 1)) +
+  scale_x_continuous(limits = c(18, 22)) +
+  scale_y_continuous(limits = c(18, 22)) +
+  labs(x = "Predicted MaxMnT (°C)",
+       y = "Observed MaxMnt (°C)",
+       title = "Predicted and observed annual maximum of mean daily stream temperatures", 
+       subtitle = "Observed temperatures from Chinook Salmon tagged in 2002-2004 (n = 33 fish)",
+       color = "Population", shape = "Year") +
+  theme_bw() +
+  theme(legend.position = "right", legend.box = "vertical")
+
+ggsave("output/fish validation maxmnt.jpeg", width = 9, height = 7)
+  
+chin_maxMnT %>% 
+  ggplot(aes(y = fct_reorder(stock, maxMnT), x = maxMnT, color = as.factor(year))) +
+  geom_point()
+```
+
+Look at durations above 17 as a second comparison. Currently these are summed separately for the mainstem and tributary and then added, but since the timing windows overlap, there is inherent double-counting *if* temperatures were above 17 in both habitats when the windows overlapped. Can compare CDD above 17 to the mainstem and cumulatively separately for the fish.
+
+```{r fish validation cddgt17}
+chin_cddGT17 <- chin_dat %>% 
+  # filter(reach == "Yukon 3") %>% 
+  mutate(year = year(sampleDate)) %>% 
+  group_by(stock, year, fishno, sampleDate) %>% 
+  summarize(meanDT = mean(temp, na.rm = TRUE)) %>% 
+  arrange(fishno, sampleDate) %>% 
+  group_by(stock, year, fishno) %>% 
+  mutate(ddGT17 = case_when(meanDT - 17 > 0 ~ meanDT - 17,
+                            TRUE ~ 0),
+         cumTemp = cumsum(ddGT17)) %>% 
+  summarize(cddGT17_fish = max(cumTemp)) %>% 
+  mutate(Population = case_when(stock == "Big Salmon" ~ "Carmacks",
+                                stock == "Klondike" ~ "LwrMain",
+                                stock == "Tatchun" ~ "MidMain",
+                                stock == "White" ~ "White-Donjek",
+                                TRUE ~ stock))
+
+
+right_join(chin_cddGT17 %>% select(Population, year, cddGT17_fish, fishno), 
+          pops_stMets_v2, by = c("Population" = "Population", "year" = "sampleYear")) %>% ungroup() %>% 
+  filter(!is.na(cddGT17_fish)) %>% 
+  ggplot(aes(x = cddGT17_main, y = cddGT17_fish)) +
+  geom_point(aes(color = stock, shape = as.factor(year))) +
+  geom_smooth(method = "lm") +
+  stat_cor(aes(label = after_stat(rr.label)), color = "red", geom = "label") +
+  geom_abline(aes(intercept = 0, slope = 1)) +
+  scale_x_continuous(limits = c(5, 75)) +
+  scale_y_continuous(limits = c(5, 75)) +
+  labs(x = "Predicted CDD > 17 (°C)",
+       y = "Observed CDD > 17 (°C)",
+       title = "Predicted and observed cumulative degrees above 17°C", 
+       subtitle = "Observed temperatures from Chinook Salmon tagged in 2002-2004 (n = 33 fish)",
+       color = "Population", shape = "Year") +
+  theme_bw() +
+  theme(legend.position = "right", legend.box = "vertical")
+
+ggsave("output/fish validation cddgt17.jpeg", width = 9, height = 7)
+```
+
+
+
+# Rapids ST model exploration
+
+Look at patterns of covariates in early 90s to see what is driving high temperatures.
+
+Look at marginal effects in each model.
+
+Compare to discharge from Yukon R near stevens village, discharge starting in 1991, 15453500.
+
+Compare to air temperature from Fairbanks airport.
+
+```{r Rapids marginal effects plot}
+
+rapids_brt_sp <- tempMean_brt %>% 
+  filter(grepl("Rapids", SiteID)) %>% 
+  pull(fit_sp1)
+
+rapids_me_grid_sp <- data.frame(x = as.numeric(), y = as.numeric())
+for(i in 1:4) {
+  out <- plot.gbm(rapids_brt_sp[[1]], i.var = i, return.grid = TRUE, n.trees = 300)
+  out <- out %>% 
+    mutate(var = names(out)[1]) 
+  names(out)[1] <- "x"
+  rapids_me_grid_sp <- bind_rows(rapids_me_grid_sp, out)
+}  
+p1 <- rapids_me_grid_sp %>% 
+    ggplot(aes(x = x, y = y)) + 
+    geom_line() +
+    facet_wrap(~var, scales = "free") 
+p1
+
+rapids_brt_fall <- tempMean_brt %>% 
+  filter(grepl("Rapids", SiteID)) %>% 
+  pull(fit_fall1)
+
+rapids_me_grid_fall <- data.frame(x = as.numeric(), y = as.numeric())
+for(i in 1:4) {
+  out <- plot.gbm(rapids_brt_fall[[1]], i.var = i, return.grid = TRUE, n.trees = 300)
+  out <- out %>% 
+    mutate(var = names(out)[1]) 
+  names(out)[1] <- "x"
+  rapids_me_grid_fall <- bind_rows(rapids_me_grid_fall, out)
+}  
+p2 <- rapids_me_grid_fall %>% 
+    ggplot(aes(x = x, y = y)) + 
+    geom_line() +
+    facet_wrap(~var, scales = "free") 
+p2
+
+
+```
+
+
+```{r rapids covariates over time}
+
+rapids_covs <- tempMean_brt %>% 
+  filter(grepl("Rapids", SiteID)) %>% 
+  unnest(all_data) %>%  #predictions data frame
+  filter(month(sampleDate) %in% 6:8) %>% 
+  group_by(sampleYear) %>% 
+  summarize(summerAT = mean(airDT),
+            summerQ = mean(discharge),
+            SWE = mean(mean_swe))
+
+
+rapids_covs %>% 
+  ggplot(aes(x = sampleYear, y = summerAT)) +
+  geom_line() + 
+  geom_point()
+
+rapids_covs %>% 
+  ggplot(aes(x = sampleYear, y = summerQ)) +
+  geom_line() +
+  geom_point()
+
+rapids_covs %>% 
+  ggplot(aes(x = sampleYear)) +
+  geom_line(aes(y = SWE))
+
+
+```
+
+
+```{r Fairbanks air temperatures}
+
+```
+

@@ -1,0 +1,148 @@
+---
+title: 
+author: 
+date: 
+output:
+  html_document:
+    highlight: textmate
+    theme: readable
+    toc: yes
+    toc_depth: 1
+   # toc_float: yes
+runtime: shiny
+---
+
+```{r libs, include=FALSE, echo=FALSE}
+
+#if you use a shiny app inside markdown you have to have an r chunk that calls ALL of the libraries you are using
+#it is also helpful to just load and filter data in this chunk 
+
+library(lubridate)
+library(utils)
+library(stats)
+library(utils)
+library(datasets)
+library(graphics)
+library(shiny)
+library(grDevices)
+library(methods)
+library(leaflet)
+library(dplyr)
+library(shinycssloaders)
+library(rgdal)
+library(plotly)
+library(htmltools)
+library(DT)
+library(shinyjs)
+library(shinythemes)
+library(rsconnect)
+library(tidyr)
+library(tidyverse)
+
+library(flextable)
+library(shinyWidgets)
+
+# load data files, using full path name so will transfer to other folder
+temp_plot <- readRDS("W:/Github/AYK-Chinook/temperature/output/Shiny/temp_plot.rds")
+temp_mets <- readRDS("W:/Github/AYK-Chinook/temperature/output/Shiny/temp_mets.rds")
+
+
+```
+
+# Stream Temperature Data Tab
+
+
+Intro text for this tab:
+Stream temperature data were requested and received from the Alaska Department of Fish and Game, the U.S. Fish and Wildlife Service, the Bureau of Land Management, and Al Von Finster (retired DFO). Additional stream temperature data collected by the U.S. Geological Survey were queried in R. Datasets collected in Alaska were filtered to match Chinook Salmon escapement monitoring locations or migration corridors. Data from Canada have not been filtered. The stream temperature data shown on the web map and in this application includes 54 sites with 1 to 21 years of data (mean = 7 years of data).  
+
+This tab allows users to query data based on Management Area and location and view stream temperature time series and annual metrics. Only five sites can be selected at one time using the check boxes. The top figure shows the mean daily stream temperatures by year, which can be used to compare differences in stream thermal regimes among sites and years. In order to assess stream temperature as a covariate of Chinook Salmon productivity, an annual metric of thermal conditions must be calculated. The bottom figure shows the annual maximum weekly stream temperature by year across the same set of sites. In both figures, colors indicate different sites.  
+
+
+
+
+THIS WORKS! Can filter by Management Area first, which will control the check boxes available for site selection. Can only check 5 sites at a time (when you check > 5, other sites get unchecked), and it shows two plots on the page. 
+
+
+```{r}
+
+my_max <- 5 # maximum number of sites to plot together
+
+ui <- fluidPage(
+  sidebarLayout(
+    sidebarPanel(
+      ### selection Input based on Management Area
+      selectInput("regioninput","Region",c(unique(temp_plot$Region)), 
+                  selected= "Norton Sound", multiple = FALSE),
+      ### Add Input from CheckboxGroup based on Site starting with all
+      checkboxGroupInput("siteinput", label = "River",
+                         choices =  unique(temp_plot$Waterbody_name), 
+                         selected = "usgs_Weir1", inline = TRUE)
+    ), 
+    mainPanel(
+      fluidRow(
+        verticalLayout(plotOutput("graph1"), plotOutput("graph2"))
+      )
+    )# closing main panel
+  )
+)
+
+server <- function(input, output, session) {
+  ### Filter Region 
+  regionFiltered <- reactive(temp_plot[temp_plot$Region %in% input$regioninput,])
+  
+  ### Observe if siteinput changes based on CHECK BOX
+  observeEvent(input$regioninput, {
+    updateCheckboxGroupInput(session, "siteinput", choices = unique(regionFiltered()$Waterbody_name),
+                             selected = unique(regionFiltered()$Waterbody_name)[1])
+  })
+  
+  ### Intake Coordinator KPIs
+  
+  observe({
+    if(length(input$siteinput) > my_max){
+      updateCheckboxGroupInput(session, "siteinput", selected= tail(input$siteinput,my_max))
+    }
+  })
+  
+  userFiltered1 <- reactive(regionFiltered()[ "All" %in% input$regioninput |
+                                                regionFiltered()$Waterbody_name %in% input$siteinput,])
+  userFiltered2 <- reactive(temp_mets[temp_mets$Waterbody_name %in% input$siteinput,])
+  
+  output$graph1 <- renderPlot({
+    ggplot(data = userFiltered1(), aes(x = as.Date(day, format = "%m-%d"),  
+                                       y = meanDT, col = Waterbody_name)) +
+      geom_line(alpha=0.7) +
+      scale_x_date(date_labels = "%b") +
+      facet_wrap(~sampleYear) +
+      scale_size(range = c(2, 2), limits = c(0.5, 1.5)) +
+      theme(legend.position = "bottom") +
+      guides(color = guide_legend(nrow = 3, byrow = TRUE)) +
+      labs(x = "Date", y = "",
+           title = "Daily Average Temperature (°C)", color = "River Name: ")
+    
+  })
+  
+  output$graph2 <- renderPlot({
+    ggplot(data = userFiltered2(), aes(x = sampleYear, y = Max7d_DAT, color = Waterbody_name)) +
+      geom_line() +
+      geom_point() +
+      geom_hline(aes(yintercept = 18), linetype = 2) +
+      # scale_x_continuous(breaks = c(2012, 2014, 2016, 2018, 2020)) +
+      theme(legend.position = "bottom") +
+      labs(x = "Year", y = "",
+           title = "Maximum Weekly Temperature (°C)", color = "River Name: ") +
+      guides(color = guide_legend(nrow = 3, byrow = TRUE))
+    
+  })
+  
+}
+
+shinyApp(ui, server)
+```
+
+
+
+
+
+
+

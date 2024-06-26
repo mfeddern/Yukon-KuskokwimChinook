@@ -1,0 +1,330 @@
+---
+title: "0_usgs"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(dataRetrieval)
+library(lubridate)
+library(broom)
+library(sf)
+library(plotly)
+
+```
+
+
+# Initial exploration of Yukon sites
+
+Starting with pilot station data and plot.
+
+
+```{r pilot station temp and figure, eval = FALSE}
+temp_ps <- readNWISdv(siteNumbers = "15565447", parameterCd = "00010")
+
+temp_ps <- temp_ps %>% 
+  select(date = Date, temperature = X_00010_00003, flag = X_00010_00003_cd, site = site_no) %>% 
+  mutate(day = format(date, "%m-%d"), year = year(date))
+
+temp_ps %>% 
+  group_by(year) %>% 
+  summarize(gt18 = sum(temperature > 18)) %>% 
+  filter(!year == 1978) %>% 
+  summarize(mean(gt18))
+
+temp_ps %>% 
+  complete(day, year) %>% 
+  filter(year > 2013) %>% 
+  ggplot() +
+  geom_line(aes(x = as.Date(day, format = "%m-%d"), 
+                                                      y = temperature, color = as.factor(year))) +
+  geom_line(data = . %>% filter((year == 2019)), aes(x = as.Date(day, format = "%m-%d"), 
+                                                      y = temperature), color = "red", size = 1) +
+  annotate("rect", xmin = as.Date("06-01", format = "%m-%d"), xmax = as.Date("07-17", format = "%m-%d"), ymin = 0, ymax = 22,
+           alpha = .1,fill = "blue") +
+  theme_bw() +
+  theme() +
+  labs(x = "Date", y = "Mean Daily Temperature (°C)", color = "Year")
+
+
+ggsave("output/Pilot Station Mean Daily Stream Temperatures.jpeg", width = 7, height = 6)
+```
+
+Tanana, Chena and Salcha
+
+```{r tanana basin sites, eval = FALSE}
+temp_tan <- readNWISdv(siteNumbers = c("15515500", "15493000", "15484000"), parameterCd = "00010")
+
+temp_tan <- temp_tan %>% 
+  select(date = Date, temperature = X_00010_00003, flag = X_00010_00003_cd, site = site_no) %>% 
+  mutate(site_name = case_when(site == "15515500" ~ "Tanana",
+                               site == "15493000" ~ "Chena",
+                               site == "15484000" ~ "Salcha"))
+
+```
+
+```{r figures of tanana sites, eval = FALSE}
+temp_tan %>% 
+  ggplot() +
+  geom_line(aes(date, temperature)) +
+  facet_wrap(~site_name)
+
+
+temp_tan %>% 
+  group_by(site_name, month = month(date), year = year(date)) %>% 
+  summarize(mean_mon = mean(temperature)) %>% 
+  # filter(month == 7) %>% 
+  ggplot(aes(x = year, y = mean_mon, color = site_name)) +
+  geom_point() +
+  geom_smooth() +
+  facet_wrap(~month, scales = "free")
+
+
+temp_tan %>% 
+  group_by(site_name, month = month(date), year = year(date)) %>% 
+  summarize(mean_mon = mean(temperature)) %>%
+  # filter(month == 7) %>% 
+  nest(data = -site_name, -month) %>% 
+  mutate(
+    fit = map(data, ~ lm(mean_mon ~ year, data = .x)),
+    tidied = map(fit, tidy)
+  ) %>% 
+  unnest(tidied)
+  
+
+temp_tan %>% 
+  group_by(site_name, month = month(date), year = year(date)) %>% 
+  summarize(max_mon = max(temperature)) %>%
+  # filter(month == 7) %>% 
+  nest(data = -site_name, -month) %>% 
+  mutate(
+    fit = map(data, ~ lm(max_mon ~ year, data = .x)),
+    tidied = map(fit, tidy)
+  ) %>% 
+  unnest(tidied) %>% 
+  arrange(p.value)
+
+
+```
+
+
+# Spatial extract of temperature using study area
+
+First filter from AK down to AYK study area.
+Read in all sites with daily values for AK and temperature. Convert to an SF object.
+
+```{r usgs temp md for AK}
+usgs_temp <- whatNWISdata(stateCd = "AK", service = "dv", 
+                             parameterCd = c("00010"))
+
+usgs_temp <- usgs_temp %>% select(agency_cd:dec_long_va, huc_cd) %>% distinct()
+
+usgs_temp_sf <- st_as_sf(usgs_temp, coords = c("dec_long_va", "dec_lat_va"), crs = "WGS84")
+usgs_akalb <- st_transform(usgs_temp_sf, crs = 3338)
+
+ggplot() +
+  geom_sf(data = usgs_temp_sf)
+```
+
+
+```{r usgs temp md in study area}
+
+ayk_sa <- st_read(dsn = "W:/GIS/AYK_Chinook/AYK_Chinook.gdb", layer = "study_area")
+
+st_crs(ayk_sa) == st_crs(usgs_akalb)
+
+usgs_sa <- st_intersection(usgs_akalb, ayk_sa)
+
+usgs_sa_wgs84 <- st_transform(usgs_sa, crs = "wgs84")
+
+usgs_md <- bind_cols(usgs_sa_wgs84, as.data.frame(st_coordinates(usgs_sa_wgs84))) %>% 
+  st_drop_geometry() %>% 
+  rename(SourceName = agency_cd,
+         Agency_ID = site_no,
+         Waterbody_name = station_nm,
+         Latitude = Y,
+         Longitude = X) %>% 
+  mutate(SiteID = paste0("usgs_", Agency_ID),
+         Parameter = "Temperature") %>% 
+  select(SourceName, SiteID, Agency_ID, Parameter, Waterbody_name, Latitude, Longitude)
+
+usgs_md %>% 
+  arrange(Agency_ID, SiteID)
+```
+
+
+```{r usgs daily data}
+usgs_dat <- readNWISdv(siteNumbers = usgs_sa$site_no, parameterCd = "00010", statCd = c("00001", "00002", "00003"))
+
+usgs_dat %>% 
+  distinct(X_00010_00001_cd, X_00010_00002_cd, X_00010_00003_cd)
+
+#get list of approved codes 
+A_codes <- usgs_dat %>% 
+  distinct(X_00010_00003_cd) %>% 
+  filter(grepl("A", X_00010_00003_cd)) %>% 
+  pull(X_00010_00003_cd)
+
+# some data where mean is accepted, but other values are not. Only 86 total.
+usgs_dat %>% 
+  filter(!(X_00010_00001_cd %in% A_codes) | !(X_00010_00002_cd %in% A_codes), X_00010_00003_cd %in% A_codes)
+
+# a lot of provisional data overall, this would be a lot to lose if we filter on A codes.
+usgs_dat %>% 
+  count(site_no, X_00010_00003_cd %in% A_codes) %>% 
+  pivot_wider(names_from = `X_00010_00003_cd %in% A_codes`, values_from = n)
+
+#not filtering on just accepted data for now, the only other code is provisional, no rejected data.
+usgs_daily <- usgs_dat %>% 
+  # filter(X_00010_00003_cd %in% A_codes) %>% 
+  rename(SourceName = agency_cd,
+         Agency_ID = site_no,
+         sampleDate = Date,
+         maxDT = X_00010_00001,
+         minDT = X_00010_00002, 
+         meanDT = X_00010_00003) %>% 
+  mutate(SiteID = paste0("usgs_", Agency_ID)) %>% 
+  select(SourceName, Agency_ID, sampleDate, minDT, maxDT, meanDT, SiteID)
+
+#calculate mean from min and max when not provided and delete rows with no data (for mean only since that is what
+# we will want to model.
+usgs_daily <- usgs_daily %>% 
+  mutate(meanDT = case_when(is.na(meanDT) & !is.na(maxDT) & !is.na(minDT) ~ (maxDT + minDT)/2,
+                            TRUE ~ meanDT)) %>% 
+  filter(!(is.na(meanDT)))
+
+
+```
+
+Remove Tanana River and Yukon River at Galena sites from md since no temperature data for these site.
+
+Note Tanana river temp data are missing in usgs data file. Online page states only discharge is available for this site.
+https://waterdata.usgs.gov/nwis/uv?site_no=15476000
+
+Yukon R at Galena only add temperature data in September 2021
+https://waterdata.usgs.gov/nwis/dv?referred_module=sw&site_no=15564860
+
+
+```{r remove tanana from md}
+remove <- anti_join(usgs_md %>% distinct(SiteID), usgs_daily %>% distinct(SiteID)) 
+
+usgs_daily %>% 
+  filter(SiteID == "usgs_15564860")
+
+remove <- bind_rows(remove, data.frame(SiteID = "usgs_15564860")) 
+
+left_join(remove, usgs_daily) #no data
+left_join(remove, usgs_md) 
+
+usgs_md <- anti_join(usgs_md, remove)
+```
+
+
+
+## Add in Pilgrim River data
+
+Also want one site from Pilgrim River from Michael Carey. Sites Weir1 and Weir2 are right next to each other, maybe duplicate loggers, use either one since both at escapement site. One may have less missing data or could use one to fill in for the other as needed.
+
+
+```{r pilgrim md}
+pilgrim_md <- read_csv("S:/Stream Temperature Data/USGS Mike Carey/sockeyeSalmon_sites_pilgrimR_carey_2013_2016.csv")
+
+pilgrim_md <- pilgrim_md %>% 
+  filter(Site_Name == "Weir1") %>% 
+  mutate(SourceName = "USGS",
+         SiteID = paste0("usgs_", Site_Name),
+         Waterbody_name = "Pilgrim River",
+         Parameter = "Temperature") %>% 
+  rename(Agency_ID = Site_Name, Latitude = LAT, Longitude = LON) %>% 
+  select(SourceName, SiteID, Agency_ID, Parameter, Waterbody_name, Latitude, Longitude)
+```
+
+```{r pilgrim data}
+pilgrim_dat <- read_csv("S:/Stream Temperature Data/USGS Mike Carey/sockeyeSalmon_waterTemp_pilgrimR_carey_2013_2016.csv")
+
+pilgrim_daily <- pilgrim_dat %>% 
+  mutate(sampleDate = as.Date(DateTime, format = "%m/%d/%Y %H:%M")) %>% 
+  pivot_longer(cols = OutletTuksuk:Grandcentral, names_to = "Site", values_to = "Temperature") %>%
+  filter(!Temperature == -9999) %>% 
+  group_by(Site, sampleDate) %>% 
+  summarize(meanDT = mean(Temperature), minDT = min(Temperature), maxDT = max(Temperature))
+
+summary(pilgrim_dat)
+
+p1 <- pilgrim_daily %>% 
+  complete(sampleDate = seq(min(sampleDate), max(sampleDate), by = 1)) %>% 
+  filter(Site %in% c("Weir1", "Weir2"), month(sampleDate) %in% 6:9) %>% 
+  ggplot(aes(x = sampleDate, color = Site)) +
+  geom_line(aes(y = meanDT), color = "black") +
+  geom_line(aes(y = maxDT), color = "red") +
+  geom_line(aes(y = minDT), color = "blue") +
+  facet_wrap(~year(sampleDate), scales = "free_x")
+
+ggplotly(p1)
+
+
+# use weir1, same amount of data per year, but also has 2016.
+pilgrim_daily %>% 
+  group_by(Site, year = year(sampleDate)) %>% 
+  count(Site, year)
+
+#Filter to Weir1 and remove air temps:
+# remove data after 8/23/16
+# remove data before 7/1/16
+pilgrim_daily <- pilgrim_daily %>%
+  filter(Site == "Weir1", 
+         !sampleDate > as.Date("2016-08-23"),
+         !(sampleDate < as.Date("2016-07-1") & year(sampleDate) == 2016)) %>% 
+  mutate(SiteID = paste0("usgs_", Site))
+  
+
+```
+
+Add the pilgrim river md and data to the larger usgs dataset.
+
+```{r combine data}
+usgs_md <- bind_rows(usgs_md, pilgrim_md) 
+
+usgs_daily <- bind_rows(usgs_daily, pilgrim_daily) %>% select(-Site)
+
+left_join(usgs_daily %>% distinct(SiteID), usgs_md)
+```
+
+
+
+## Save md and data
+
+Filter to the sites that match Chinook escapement monitoring locations. this probably isn't needed right now. We are also showing all FWS-OSM sites in study area, presumably some are Chum systems and don't align with the Chinook sites from the proposal.
+
+```{r}
+usgs_md <- usgs_md %>% 
+  mutate(chinook_site = case_when(grepl("SALCHA|CHENA|TANANA|YUKON|UNALAKLEET|NIUKLUK|Pilgrim|ANVIK", Waterbody_name) ~ 1,
+                                  TRUE ~ 0)) 
+
+```
+
+
+Make site names consistent with other datasets and save.
+
+```{r save md and data}
+usgs_md %>% 
+  mutate(Waterbody_name = str_to_title(Waterbody_name) %>% gsub("Ak", "AK", .)) %>% 
+  saveRDS(., file = "data/final_data/usgs_md.rds")
+
+usgs_daily %>% 
+  ungroup() %>% 
+  select(-Agency_ID, -SourceName) %>% 
+  saveRDS(., file = "data/final_data/usgs_dat.rds")
+  
+```
+
+
+```{r}
+usgs_daily %>% filter(SiteID == "usgs_15565447") %>% 
+  distinct(year(sampleDate))
+```
+
+
+

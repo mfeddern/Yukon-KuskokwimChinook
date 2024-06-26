@@ -1,0 +1,321 @@
+---
+title: "1_GRFR_validation"
+output: 
+  html_document: 
+    df_print: paged
+    fig_width: 10
+    fig_height: 10
+    fig_caption: yes
+    code_folding: hide
+    toc: true
+    number_sections: true
+    toc_depth: 4
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+editor_options: 
+  chunk_output_type: inline
+date: '2022-04-12'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+library(knitr)
+library(lubridate)
+library(ggpubr)
+library(zoo)
+library(sf)
+library(ggpubr)
+library(tidyverse)
+library(gridExtra)
+
+select <- dplyr::select
+```
+
+Options for validating streamflow metrics (either from modeled streamflow or precipitation datasets) against stream gages are mostly for sites not associated with escapement monitoring locations. Checked escapement sites for streamflow gages in their watersheds or downstream and recorded notes in the chinook_sites_fromR_shiftedToMB point file in the project geodatabase. 
+
+* Kuskokowkim - sites on Kusko mainstem and Kisaralik, but all higher in watershed, not close to outlet.
+* Norton Sound - Unalakleet has a gage on it, 11 yrs for validation.
+* US Yukon - Chena and Salcha both have long-term gages low in watershed. For Yukon lower and upper there are also gages, but not sure that mainstem spawning is as important as tributary spawning. JTC reports should have boundaries for these areas.
+* Canadian Yukon - in all the pop units, there is at least one major spawning area with a gage. 
+
+# GRFR comparison with streamflow data 
+
+## Eight site comparison for April 2022 Workshop
+
+Yang, Y., M. Pan, P. Lin, H. E. Beck, Z. Zeng, D. Yamazaki, C. H. David, H. Lu, K. Yang, Y. Hong, and E. F. Wood. 2021. Global Reach-Level 3-Hourly River Flood Reanalysis (1980–2019). Bulletin of the American Meteorological Society 102(11):E2086–E2105.
+
+Data can be accessed here: https://www.reachhydro.org/home/records/grfr
+
+This looks promising and might be useful for streamflow covariates. Processed from 90 m DEM using taudem, but based on hydrosheds. List of stream gages and catchment IDs to send to Josh to validate the modeled discharge for a small set of sites.
+
+```{r results = "hide"}
+
+flow_md <- read_rds("data/final_data/combined_data/flow_md.rds") 
+
+flow <- read_rds("data/final_data/combined_data/flow_dat.rds") %>% 
+  mutate(sampleYear = year(date))
+
+flow_md <- left_join(flow_md, flow %>%
+  distinct(SiteID, sampleYear) %>% 
+  group_by(SiteID) %>% 
+  summarize(start_year = min(sampleYear),
+            end_year = max(sampleYear),
+            total_yrs = n()) %>% 
+  mutate(Parameter = "Discharge"))
+
+
+flow_sites <- tibble(Agency_ID = c("09BA001", "09CA006", "09CD001", "15484000", "15493700", "15565700", "15303900", "15565400"),
+       COMID = c(81024048, 81024473, 81018427, 81014663, 81014557, 81014712, 81023826, 81019415))
+
+# left_join(flow_sites, flow_md) #%>% 
+#   write_csv(., "output/merit_8site_comid.csv")
+
+```
+
+Read in discharge data queried by Josh. Note that Josh updated the COMIDs using an older stream network that matched the COMID in the modeled discharge. The version I was using does not match.
+
+```{r results = "hide"}
+comid_lkup <- read_csv("S:\\AKSSF YK Chinook\\Files_from_Josh_8Apr22/merit_8site_comid_v1.csv")
+
+grfr_flow <- read_csv("S:\\AKSSF YK Chinook\\Files_from_Josh_8Apr22/merit_8site_comid_v1_Qout_dated.csv") %>% 
+  pivot_longer(cols = '81025492':'81021992', values_to = "grfr_flow", names_to = "COMID") %>%
+  mutate(COMID = as.numeric(COMID)) %>% 
+  left_join(comid_lkup %>% select(COMID, SiteID, Waterbody_name)) %>% 
+  rename(date = DATE) %>% 
+  mutate(Name = str_to_title(Waterbody_name) %>% gsub("Ak", "AK", .))
+
+
+flow <- read_rds("data/final_data/combined_data/flow_dat.rds") %>% 
+  mutate(sampleYear = year(date))
+
+flow_comp <- left_join(flow, grfr_flow) %>% 
+  left_join(flow_md %>% select(SiteID, Region)) %>% 
+  filter(!is.na(grfr_flow)) %>% 
+  rename('Modeled (GRFR)' = grfr_flow, Measured = mean_flow) %>% 
+  pivot_longer(cols = c('Modeled (GRFR)', Measured), names_to = "Source", values_to = "flow_cms")
+
+flow_comp
+```
+
+Number of years of discharge data for each of eight stream gages in YK region.
+
+```{r site summary}
+flow_comp %>% 
+  distinct(Name, sampleYear) %>% 
+  count(Name) %>% 
+  kable(title = "Number of years of data for each site")
+
+flow_comp %>% 
+  distinct(Name, sampleYear) %>% 
+  group_by(Name) %>% 
+  summarize(min(sampleYear), max(sampleYear))
+```
+
+Rolling pdf showing how flow datasets compare to one another. Plots are facets of 8 sites and each page is a different year.
+
+```{r pdf of streamflow time series, eval = FALSE}
+
+flow_years <- flow_comp %>% 
+  distinct(SiteID, sampleYear) %>% 
+  count(sampleYear)
+
+pdf("output/GRFRvDailyFlow_8sites.pdf")
+for(i in 1:nrow(flow_years)) {
+  p1 <- left_join(flow_years %>% slice(i), flow_comp) %>% 
+    ggplot(aes(x = date)) +
+    geom_line(aes(y = flow_cms, color = Source)) +
+    scale_x_date(date_labels = "%b") +
+    facet_wrap(~Name, scales = "free",
+               labeller = labeller(Name = label_wrap_gen(30))) +
+    labs(title = flow_years %>% slice(i) %>% pull(sampleYear),
+         y = bquote("Discharge "~(m^3/s))) +
+    theme(legend.position = "bottom", axis.title.x = element_blank()) 
+  plot(p1)
+}
+dev.off()
+
+```
+
+Correlation between flow datasets by site and month.
+
+```{r flow correlation}
+
+flow_comp %>% 
+  pivot_wider(names_from = Source, values_from = flow_cms) %>% 
+  group_by(month = month(date, abbr = TRUE, label = TRUE), Name) %>% 
+  summarize(flow_cor = cor(Measured, `Modeled (GRFR)`, method = "spearman")) %>% 
+  ggplot(aes(x = month, y = flow_cor)) +
+  geom_col() +
+  scale_x_discrete(breaks = c("Jan", "Apr", "Jul", "Oct")) +
+  facet_wrap(~Name, labeller = labeller(Name = label_wrap_gen(30))) +
+  labs(x = "Month", y = "Pearson Correlation (r)")
+
+# ggsave("output/GRFRvFlow_corByMonth.jpeg")
+```
+
+Explore Chena river for months of interest. It definitely looks like it does better during the open water season and after snowmelt -- July through October. This could be useful since those months correspond to when we are concerned about redd scour. 
+
+```{r}
+#weekly rolling average
+# flow_comp %>% 
+#   filter(grepl("Chena", Name)) %>% 
+#   group_by(Source) %>% 
+#   arrange(Source, date) %>% 
+#   mutate(flow_ma7 = rollapply(flow_cms, 7, mean, align = "center", fill = NA)) %>%
+#   select(-flow_cms) %>% 
+#   pivot_wider(names_from = Source, values_from = flow_ma7) %>% 
+#   ggplot(aes(x = Measured, y = `Modeled (GRFR)`)) +
+#   geom_point() +
+#   facet_wrap(~month(date), scales = "free") +
+#   stat_cor() +
+#   labs(title = "Correlation between modeled and measured streamflow",
+#        subtitle = "Weekly Rolling Average")
+#   
+
+#daily
+flow_comp %>% 
+  filter(grepl("Chena", Name)) %>% 
+  pivot_wider(names_from = Source, values_from = flow_cms) %>% 
+  ggplot(aes(x = Measured, y = `Modeled (GRFR)`)) +
+  geom_point() +
+  facet_wrap(~month(date), scales = "free") +
+  stat_cor() +
+  labs(title = "Correlation between modeled and measured streamflow",
+       subtitle = "Mean Daily Streamflow")
+  
+
+ggsave("output/GRFRvFlow_corByMonth_Chena.jpeg")
+```
+
+Calculate an annual statistic - maximum daily streamflow from August to October.
+
+```{r fall max flow 8 sites}
+flow_comp %>%
+  # filter(!grepl("Anvik|Unalak", Name)) %>% 
+  filter(month(date) %in% 8:11) %>% 
+  mutate(label = factor(word(Name), levels = c("Anvik", "Chena", "Salcha", "Unalakleet",
+                                               "Ross", "Nisling", "Yukon", "Kuskokwim"))) %>% 
+  group_by(Region, SiteID, label, Source, sampleYear) %>% 
+  summarize(max_fall_flow = max(flow_cms)) %>% 
+  pivot_wider(names_from = Source, values_from = max_fall_flow) %>%  
+  ggplot(aes(y = Measured, x = `Modeled (GRFR)`, color = Region)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  # geom_abline(aes(intercept = 0, slope = 1)) +
+  facet_wrap(~label, scales = "free", labeller = label_wrap_gen(), nrow = 2) +
+  stat_cor(label.x = 0, label.y.npc = 1, aes(label = ..r.label..), show.legend = FALSE) +
+  labs(title = "Comparison between Maximum Fall GRFR Streamflow and\nMeasured Streamflow (1979-2019)",
+       x = "Modeled Max. Daily Streamflow", y = "Measured Max. Daily Streamflow") +
+  theme_bw() +
+  theme(legend.position = "bottom", text = element_text(size = 18))
+
+# ggsave("output/GRFRvFlow_maxFallFlow.jpeg", width = 10, height = 6)
+
+```
+
+```{r plot of max flow by year}
+flow_comp %>%
+  # filter(!grepl("Anvik|Unalak", Name)) %>% 
+  filter(month(date) %in% 8:11) %>% 
+  mutate(label = factor(word(Name), levels = c("Anvik", "Chena", "Salcha", "Unalakleet",
+                                               "Ross", "Nisling", "Yukon", "Kuskokwim"))) %>% 
+  group_by(Region, SiteID, label, Source, sampleYear) %>% 
+  summarize(max_fall_flow = max(flow_cms)) %>% 
+  pivot_wider(names_from = Source, values_from = max_fall_flow) %>%  
+  ggplot(aes(x = sampleYear)) +
+  geom_point(aes(y = Measured), color = "red") +
+  geom_point(aes(y = `Modeled (GRFR)`), color = "blue") +
+  geom_line(aes(y = Measured), color = "red") +
+  geom_line(aes(y = `Modeled (GRFR)`), color = "blue") +
+  facet_wrap(~label, scales = "free", labeller = label_wrap_gen(), nrow = 2) +
+  scale_x_continuous(breaks = seq(1980, 2020, by = 5)) +
+  labs(title = "Comparison between Maximum Fall GRFR Streamflow and\nMeasured Streamflow (1979-2019)",
+       x = "Modeled Max. Daily Streamflow", y = "Measured Max. Daily Streamflow") +
+  theme_bw() +
+  theme(legend.position = "bottom", axis.text.x = element_text(angle = 75, hjust = 1))
+```
+
+
+
+Alternatives to using this dataset would be using an index gage for different parts of the study area, which is similar to our attempt to use the Little Susitna in our CI study. 
+
+# SNAP precipitation
+
+```{r}
+snap <- read_rds("data/snap_max_fall_pr_8sites.rds") %>% 
+  rename(sampleYear = year)
+
+
+flow %>%
+  filter(month(date) %in% 8:11) %>% 
+  group_by(SiteID, sampleYear) %>% 
+  summarize(max_fall_flow = max(mean_flow)) %>%
+  right_join(snap) %>% 
+  left_join(flow_md %>% select(SiteID, Waterbody_name, Region)) %>% 
+  mutate(label = factor(word(Waterbody_name) %>% str_to_title(), levels = c("Anvik", "Chena", "Salcha", "Unalakleet",
+                                               "Ross", "Nisling", "Yukon", "Kuskokwim"))) %>% 
+  ggplot(aes(x = value, y = max_fall_flow, color = Region)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  facet_wrap(~label, scales = "free", labeller = label_wrap_gen(), nrow = 2) +
+  stat_cor(label.x.npc = 0, label.y.npc = 1, aes(label = ..r.label..), show.legend = FALSE) +
+  labs(x = "Max. Monthly Precipitation (mm)",
+       y = "Max. Daily Streamflow (cfs)",
+       title = "Comparison between SNAP Precipitation and \nMeasured Streamflow (1979-2015)") +
+  theme_bw() +
+  theme(legend.position = "bottom", text = element_text(size = 18))
+
+ggsave("output/SNAPprvmaxFallFlow.jpeg", width = 10, height = 6)
+
+```
+
+
+# Daymet
+
+Ran Ross River for 2019, but no data for that year! working on 8 sites for 2000-2002
+
+```{r}
+ross <- readRDS("output/ross_19_pr5d.rds") 
+
+flow %>%
+  filter(month(date) %in% 8:11, sampleYear == 2019) %>% 
+  right_join(ross) #%>% 
+  ggplot(aes(x = pr5dsum, y = mean_flow)) +
+  geom_point() +
+  # geom_smooth(method = "lm") +
+  stat_cor() 
+
+```
+
+
+Note no real variation in these 3 years, run all 20 years, need 2 days to let computer to create the 5day sums.
+
+```{r}
+dmpr <- read_rds("data/daymet_5daypr_8sites.rds") %>% 
+  group_by(SiteID, sampleYear = year(date)) %>% 
+  summarize(max5d = max(pr5dsum, na.rm = TRUE))
+
+flow %>%
+  filter(month(date) %in% 8:11) %>% 
+  group_by(SiteID, sampleYear) %>% 
+  summarize(max_fall_flow = max(mean_flow)) %>%
+  right_join(dmpr) %>% 
+  left_join(flow_md %>% select(SiteID, Waterbody_name, Region)) %>% 
+  mutate(label = factor(word(Waterbody_name) %>% str_to_title(), levels = c("Anvik", "Chena", "Salcha", "Unalakleet",
+                                               "Ross", "Nisling", "Yukon", "Kuskokwim"))) %>% 
+  ggplot(aes(x = max5d, y = max_fall_flow)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  facet_wrap(~label, scales = "free", labeller = label_wrap_gen(), nrow = 2) 
+  # stat_cor(label.x.npc = 0, label.y.npc = 1, aes(label = ..r.label..), show.legend = FALSE) +
+  labs(x = "Max. Monthly Precipitation (mm)",
+       y = "Max. Fall Daily Streamflow (cfs)",
+       title = "Comparison between SNAP Precipitation and Measured Streamflow (2000-2015)") +
+  theme_bw() +
+  theme(legend.position = "bottom", text = element_text(size = 18))
+
+```
+
+

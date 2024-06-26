@@ -1,0 +1,355 @@
+---
+title: "4_genetic_group_covariates"
+output: html_document
+date: "2023-10-02"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(rnoaa)
+library(GSODR)
+library(tidyverse)
+library(sf)
+library(zoo)
+library(leaflet)
+```
+
+This script is for creating freshwater covariates in a separate model of productivity by four genetic groups of AYK Chinook: Kuskokwim, Lower Yukon, Middle Yukon, and Upper Yukon (Canada). The covariates address four freshwater hypotheses:
+
+* temperatures during adult migration (max daily)
+* temperatures during juvenile rearing (CDD)
+* streamflow during spawning/incubation
+* streamflow during juvenile rearing
+
+Megan and Becky discussed the best way to address each hypothesis at this spatial scale on 10/6/23; see notes in each section below.
+
+# Mainstem migration temperatures
+
+Stream temperatures in migration corridors are available and modeled for the entire temporal domain at Kalskag (Kuskokwim), Pilot Station (Lower and Middle Yukon), and Rampart (Upper Yukon).
+
+For each genetic grouping, take the minimum mainstem entry date and maximum mainstem departure date across all populations and find the maximum stream temperature within that fixed window for each year. The run timing information is in 3_temperature_metrics. But note that Zach Liller observed that the mainstem timing windows for the Kuskokwim were too late in my GIS exercise so use the ADFG report to get those dates for this script.
+
+NOTE: I can't find any information on run timing past the sonar so I'm going to stick with the dates here since my analysis showed that max temps are always in July so we aren't missing them by not starting the mainstem entry date earlier in June.
+
+```{r migration timing by genetic group}
+runTim_stats <- readRDS("output/runTiming_allSites.rds")
+
+#add in genetic groups and find min entry and max exit dates
+runTim_gen <- runTim_stats %>% 
+  mutate(gen_group = case_when(grepl("Andreaf|Gisasa", Population) ~ "Lower_Yukon",
+                               grepl("Chena|Salcha", Population) ~ "Middle_Yukon",
+                               grepl("Carmack|LwrMain|MidMain|Pelly|Stewart|Teslin|UprLks|White", Population) ~ "Upper_Yukon",
+                               TRUE ~ "Kuskokwim")) %>% 
+  group_by(gen_group) %>% 
+  summarize(start_date = min(ms_start_date),
+            end_date = max(ms_end_date))
+```
+
+```{r max daily migration temps}
+
+st_preds <- readRDS("output/ST_preds_dailyMean_1980-2021.rds")
+
+mig_temps <- bind_rows(st_preds %>% 
+            # distinct(SiteID) %>% 
+            mutate(gen_group = case_when(grepl("Kalskag", SiteID) ~ "Kuskokwim",
+                                         grepl("Rapids", SiteID) ~ "Upper_Yukon",
+                                         grepl("155", SiteID) ~ "Lower_Yukon",
+                                         TRUE ~ NA_character_)) %>%
+            filter(!is.na(gen_group)),
+          st_preds %>% 
+            filter(grepl("155", SiteID)) %>% 
+            mutate(gen_group = "Middle_Yukon")) %>% 
+  left_join(runTim_gen) %>%
+  # distinct(SiteID, gen_group)
+  group_by(gen_group) %>% 
+  filter(yday > start_date, yday < end_date) %>%
+  # distinct(SiteID, yday) %>% arrange(SiteID, yday)
+  group_by(gen_group, sampleYear) %>% 
+  summarize(mig_temp = max(preds))
+  
+mig_temps %>% 
+  ggplot() +
+  geom_line(aes(x = sampleYear, y = mig_temp, color = gen_group))
+
+```
+
+
+
+
+# Weather data
+
+This script is for downloading weather data for a new model Megan is going to try out for S/R time series of Kuskokwim, Lower, Middle, and Upper Yukon. Will need to grab a weather station from each area. Possibly Bethel, St. Mary's, Fairbanks, and Whitehorse. Need daily air temperatures and precipitation to calculate metrics for spawning and rearing.
+
+* For CDD during juvenile rearing, take the CDD of air temperatures over the same time period (May - September) only using positive air temperatures.
+* For streamflow effects on egg scour, use the maximum 5-day rolling sum of precipitation because it takes multiple days of precipitation to translate to streamflow and that rolling window corresponded well with maximum fall streamflow in my exploration of precipitation metrics at the initation of this project prior to our April 2022 workshop.
+* For streamflow during juvenile rearing, take the total summer precipitation as an index of summers with higher/lower streamflow. The median doesn't make any sense because it has very little variation across years.
+
+
+```{r get gsod for yukon area}
+load(system.file("extdata", "isd_history.rda", package = "GSODR"))
+subset(isd_history, STATE == "AK")
+subset(isd_history, LAT > 58 & LAT < 66 & LON > -165 & LON < -132)
+
+isd_history %>% distinct(STATE) %>% arrange(STATE)
+
+ak_gsod <- st_as_sf(subset(isd_history, STATE == "AK"), coords = c("LON", "LAT"))
+
+yuk_gsod <- isd_history %>%
+  filter(LAT > 58 & LAT < 66 & LON > -165 & LON < -132) %>% 
+  mutate(begin_date = as.Date(as.character(BEGIN), format = "%Y%m%d"),
+         end_date = as.Date(as.character(END), format = "%Y%m%d")) 
+
+
+
+yuk_sf <- st_as_sf(yuk_gsod, coords = c("LON", "LAT"))
+
+ggplot() +
+  geom_sf(data = yuk_sf) +
+  
+```
+
+Need annual metrics for four hypotheses:
+
+* max flow in fall and spawning. Max precipitation from August - November. (Could run a 3-day moving average) -- replace with 5-day sum?
+* median flow in summer. Median precipitation from May - September. (Maybe total summer precip?)
+* CDD during summer rearing. CDD of summer air temps May - September, make sure only using positive temps.
+
+Some 0s for total summer precipitation, check if missing some years. Could fill in with another site. Could set missing years to 0 so doesn't affect model (after standardizing) and then they won't drive the model results.
+
+```{r find sites and get data}
+yuk_gsod %>% 
+  arrange(NAME) %>% 
+  mutate(years = year(end_date) - year(begin_date)) %>% 
+  filter(years > 20)
+
+#possible sites: Bethel Airport, Aniak Airport, Dawson City, Fairbanks International, Whitehorse Intl, Unalakleet
+
+stnid4 <- yuk_gsod %>% 
+  filter(grepl("BETHEL AIRPORT|FAIRBANKS INTERNATIONAL|UNALAKLEET AIRPORT|WHITEHORSE INTL", NAME)) %>% 
+  pull(STNID)
+
+
+gsod_dat <- get_GSOD(1980:2020, station = stnid4)
+
+summary(gsod_dat)
+str(gsod_dat)
+gsod_dat %>% 
+  select(Site = NAME, Date = YEARMODA, TEMP, PRCP) %>% 
+  mutate(Year = year(Date)) %>% 
+  count(Site, Year) %>% 
+  arrange(n)
+
+```
+
+Unalakleet has quite a bit of missing precipitation.
+Whitehorse also has problems.
+
+```{r missing years - should be replaced}
+
+#look for any years missing 80% of days in the fall or summer windows
+fall_prcp_summ <- gsod_dat %>% 
+  filter(!is.na(PRCP), MONTH %in% 8:11) %>% #should be 122 days
+  count(NAME, YEAR) %>% 
+  mutate(per_days = n/122 * 100,
+         missing = case_when(per_days < 80 ~ 1,
+                             TRUE ~ 0))
+
+summer_prcp_summ <- gsod_dat %>% 
+  filter(!is.na(PRCP), MONTH %in% 5:9) %>% #should be 153 days
+  count(NAME, YEAR) %>% 
+  mutate(per_days = n/153 * 100,
+         missing = case_when(per_days < 80 ~ 1,
+                             TRUE ~ 0))
+
+summer_temp_summ <- gsod_dat %>% 
+  filter(!is.na(TEMP), MONTH %in% 5:9) %>% #should be 153 days
+  count(NAME, YEAR) %>% 
+  mutate(per_days = n/153 * 100,
+         missing = case_when(per_days < 80 ~ 1,
+                             TRUE ~ 0))
+
+left_join(summer_prcp_summ %>% 
+            filter(missing == 1) %>% 
+            group_by(NAME) %>% 
+            summarize(missing_summer_precip = toString(YEAR)),
+          fall_prcp_summ %>% 
+            filter(missing == 1) %>% 
+            group_by(NAME) %>% 
+            summarize(missing_fall_precip = toString(YEAR))) %>% 
+  left_join(summer_temp_summ %>% 
+              filter(missing == 1) %>% 
+              group_by(NAME) %>% 
+              summarize(missing_summer_temp = toString(YEAR)))
+```
+
+For Unalakleet, need to find a nearby site with complete data for 1980, 1982, 1987, and 2020 for both precipitation and temperature. Having a very hard time finding sites that can fill in these years with complete data. Checked Emmonak (incomplete data as well), St Marys (although should have these years, not able to retrieve them), Russian Mission (incomplete). No other sites downstream of Tanana have data from the 80s.
+
+For Whitehorse, need to find a nearby site with complete precipitation for 1996, 2014-2020. Whitehorse Auto is complete and can be used to fill in the missing years at the airport and is also the same location.
+
+
+```{r leaflet map to find replacement sites}
+
+leaflet(yuk_gsod) %>% 
+  addTiles() %>% 
+  addMarkers(lng = ~LON, lat = ~LAT, 
+             popup = ~paste(NAME, "<br>",
+                           begin_date, "<br>",
+                           end_date))
+```
+
+```{r missing data for whitehorse}
+
+gsod_whauto <- get_GSOD(years = 2005:2020, 
+                     station = yuk_gsod %>% 
+                       filter(grepl("WHITEHORSE AUTO", NAME)) %>% 
+                       pull(STNID))
+gsod_dat %>% distinct(NAME)
+
+gsod_dat2 <- bind_rows(gsod_dat, gsod_whauto) %>% 
+  mutate(gen_group = case_when(grepl("BETHEL", NAME) ~ "Kuskokwim",
+                               grepl("FAIR", NAME) ~ "Middle_Yukon",
+                               NAME == "WHITEHORSE AUTO" & YEAR %in% 2014:2020 ~ "Upper_Yukon",
+                               NAME == "WHITEHORSE INTL" & YEAR %in% 1980:2013 ~ "Upper_Yukon",
+                               grepl("UNA", NAME) ~ "Lower_Yukon",
+                               TRUE ~ NA_character_))
+
+gsod_dat2 %>% 
+  filter(is.na(gen_group)) %>% 
+  count(NAME, YEAR)
+
+#get rid of overlapping years in whitehorse
+gsod_dat2 <- gsod_dat2 %>% 
+  filter(!is.na(gen_group))
+
+gsod_dat2 %>% 
+  filter(!is.na(PRCP)) %>% 
+  count(gen_group, YEAR) %>% 
+  filter(!is.na(gen_group)) %>% 
+  arrange(n)
+```
+
+```{r lower yukon sites}
+gsod_emm <- get_GSOD(years = c(1980, 1982, 1987), 
+                     station = yuk_gsod %>% 
+                       filter(grepl("EMM", NAME), year(end_date) < 1998) %>% 
+                       pull(STNID))
+gsod_emm %>% 
+  filter(!is.na(PRCP)) %>% 
+  count(YEAR)
+
+gsod_stmary <- get_GSOD(years = c(2006:2020), 
+                     station = yuk_gsod %>% 
+                       filter(grepl("MARY", NAME)) %>% 
+                       pull(STNID))
+gsod_stmary %>% 
+  filter(!is.na(PRCP)) %>% 
+  count(YEAR)
+
+gsod_russian <- get_GSOD(years = 1980:1990, 
+                     station = yuk_gsod %>% 
+                       filter(grepl("RUSSIAN", NAME), year(end_date) < 2006) %>% 
+                       pull(STNID))
+#no data
+gsod_russian %>% 
+  filter(!is.na(PRCP)) %>% 
+  count(YEAR)
+
+gsod_ruby <- get_GSOD(years = 1980:1990, 
+                     station = yuk_gsod %>% 
+                       filter(grepl("RUBY 44", NAME)), year(end_date) < 2006) %>% 
+                       pull(STNID))
+#no data
+gsod_russian %>% 
+  filter(!is.na(PRCP)) %>% 
+  count(YEAR)
+```
+
+
+
+
+```{r annual metrics}
+
+fall_prcp <- gsod_dat2 %>% 
+  select(gen_group, YEARMODA, TEMP, PRCP) %>% 
+  group_by(gen_group) %>% 
+  mutate(prcp_5day = rollsum(PRCP, 5, fill = "NA", align = "center"),
+         Year = year(YEARMODA),
+         Month = month(YEARMODA)) %>%
+  filter(Month %in% 8:11, !is.na(PRCP)) %>%
+  group_by(gen_group, Year) %>% 
+  mutate(percent_complete = n()/122 * 100) %>% 
+  filter(percent_complete >= 80) %>% 
+  summarize(max_fall_prcp = max(PRCP, na.rm = TRUE),
+            max_fall_5dprcp = max(prcp_5day, na.rm = TRUE))
+
+summ_prcp <- gsod_dat2 %>% 
+  select(gen_group, YEARMODA, TEMP, PRCP) %>% 
+  mutate(Year = year(YEARMODA),
+         Month = month(YEARMODA)) %>%
+  filter(Month %in% 5:9, !is.na(PRCP)) %>% 
+  group_by(gen_group, Year) %>% 
+  mutate(percent_complete = n()/153 * 100) %>% 
+  filter(percent_complete >= 80) %>% 
+  summarize(med_summ_prcp = median(PRCP, na.rm = TRUE),
+            tot_summ_prcp = sum(PRCP, na.rm = TRUE))
+
+summ_temp <- gsod_dat2 %>% 
+  select(gen_group, YEARMODA, TEMP, PRCP) %>% 
+  mutate(Year = year(YEARMODA),
+         Month = month(YEARMODA)) %>%
+  filter(Month %in% 5:9, !is.na(TEMP)) %>% 
+  group_by(gen_group, Year) %>% 
+  mutate(percent_complete = n()/153 * 100) %>% 
+  filter(percent_complete >= 80) %>% 
+  summarize(cdd_summ_temp = sum(TEMP, na.rm = TRUE))
+
+weather_mets <- full_join(mig_temps %>% rename(Year = sampleYear), fall_prcp) %>% 
+  full_join(summ_prcp) %>% 
+  full_join(summ_temp)  
+  
+
+weather_mets %>% 
+  complete(Year = 1980:2020) %>% 
+  pivot_longer(cols = c(max_fall_5dprcp, cdd_summ_temp, tot_summ_prcp, mig_temp), names_to = "metric") %>% 
+  ggplot(aes(x = Year, y = value, color = gen_group)) +
+  geom_line() +
+  facet_wrap(~metric, scales = "free_y")
+
+ggsave("output/weather_mets.jpeg", width = 9, height = 7, units = "in")
+
+#why are some total summer precipitation values 0?
+weather_mets %>% 
+  filter(tot_summ_prcp < 1)
+
+#Unalakleet probably has bad precipitation data for this period.
+# I = no precip reported, filtered on NA as missing, but this could also be considered missing.
+gsod_dat %>% 
+  filter(grepl("UNA", NAME), YEAR %in% 2004:2012) %>% 
+  count(PRCP_ATTRIBUTES)
+
+
+```
+
+
+
+
+
+# Combine and save
+
+```{r save for Megan}
+
+weather_mets %>% 
+  select(-max_fall_prcp, -med_summ_prcp) %>% 
+  saveRDS("output/weather_metrics.rds")
+
+weather_mets %>% 
+  pivot_longer(cols = c(max_fall_5dprcp, cdd_summ_temp, tot_summ_prcp, mig_temp)) %>% 
+  filter(!is.na(value)) %>% 
+  count(gen_group, name) %>% 
+  pivot_wider(names_from = name, values_from = n)
+
+
+
+```
+
+  

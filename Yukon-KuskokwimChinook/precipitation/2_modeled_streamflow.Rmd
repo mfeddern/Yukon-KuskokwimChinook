@@ -1,0 +1,382 @@
+---
+title: "2_modeled_streamflow"
+output: 
+  html_document: 
+    df_print: paged
+    fig_width: 10
+    fig_height: 10
+    fig_caption: yes
+    code_folding: hide
+    toc: true
+    number_sections: true
+    toc_depth: 4
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+editor_options: 
+  chunk_output_type: inline
+date: '2022-09-14'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+library(knitr)
+library(lubridate)
+library(ggpubr)
+library(zoo)
+library(sf)
+library(ggpubr)
+library(tidyverse)
+library(gridExtra)
+library(patchwork)
+
+select <- dplyr::select
+```
+
+
+There are 48 sites we are using for the Chinook productivity analysis. They are a combination of escapement monitoring locations and major spawning areas. The major spawning areas will be matched to the genetic substocks in the Canadian Yukon. Of those sites, there are 10 with measured streamflow that we can use to validate modeled streamflow datasets. 
+
+This script compares measured streamflow with modeled streamflow from GRFR and GLOFAS.
+
+
+# Comparison to Chinook sites with stream gages
+
+Read in point file with notes on which sites have gages on them.
+
+```{r points file with discharge notes}
+pts <- read_sf(dsn = "W:\\GIS\\AYK_Chinook\\AYK_Chinook.gdb", layer = "chinook_sites_fromR_shiftedToMB")
+
+#filter to only include the escapement monitoring sites used in the analysis 
+# and the major spawning areas in the Yukon watershed.
+pts <- pts %>% 
+  filter(analysis_site == 1 | analysis_site == 2 & Management_Area == "Kuskokwim") %>% 
+  arrange(Management_Area, Location)
+
+#all discharge notes, including sites very high in watershed or on tribs
+pts %>% 
+  filter(grepl("usgs|eccc", discharge)) %>% 
+  select(Management_Area, Location, discharge) %>% 
+  arrange(Management_Area, Location)
+
+#just ids for sites near to watershed outlets (e.g. co-located with modeled streamflow)
+chinook_flow_sites <- pts %>% 
+  filter(grepl("usgs|eccc", discharge), !grepl(";", discharge)) %>% 
+  distinct(discharge, location_short) %>% 
+  rename(SiteID = discharge) 
+
+saveRDS(chinook_flow_sites, "output/flowPop_crosswalk.rds")
+
+```
+
+Read in the observed streamflow data from USGS and ECCC and filter on the chinook sites.
+
+```{r filter observed streamflow data}
+flow_md <- read_rds("data/final_data/combined_data/flow_md.rds") 
+
+flow <- read_rds("data/final_data/combined_data/flow_dat.rds") %>% 
+  mutate(sampleYear = year(date))
+
+#only need data from 1979 on since that is when grfr data are available.
+chin_sites_obsQ <- left_join(chinook_flow_sites, flow) %>% 
+  filter(year(date) %in% 1979:2019) %>% 
+  rename(Measured = mean_flow)
+
+chin_sites_obsQ %>% distinct(location_short)
+
+#note that two sites get dropped because time series end before 1979
+# Teedriinjik and Teslin rivers.
+left_join(chinook_flow_sites, flow) %>%
+  group_by(location_short) %>%
+  summarize(range(sampleYear))
+
+#save a copy of this so can import to other scripts and compare with metrics.
+saveRDS(chin_sites_obsQ, "data/chin_sites_obsFlow.rds")
+
+```
+
+Read in modeled streamflow from GRFR and merge with the observed streamflow using the Location name and date.
+
+```{r merge with modeled grfr data}
+grfr <- readRDS("data/grfr_40yrs_46sites.rds") %>% 
+  rename(date = DATE, GRFR = daily_q) 
+
+chin_sites_allQ <- left_join(chin_sites_obsQ, grfr) 
+
+summary(chin_sites_allQ) #great, no missing data
+
+```
+
+Met with Jon Schwenk at NARL on 9/9/22. He is working on the Interface project with UAF researchers. Erik coordinated the meeting. He has been working with another global discharge dataset and was interested in seeing how it performs for Arctic rivers. He offered to query the flow data for me so that I can include it in my comparison of datasets for reconstructing freshwater habitat conditions.
+
+(Note: Jon sent me his scripts and I reran for all 49 sites. 29/49 shifted correctly, I had to make a judgement call on how to shift the other 20 to a reasonable point on the grid for representative flow. Reading in that file below so it matches all 11 sites. Jon's original query was missing some since he only sent over data for those that snapped within his drainage area threshold.)
+
+```{r read in glofas and merge}
+
+glofas <- read_csv("W:/Github/spatial/glofas_output/glofas_discharge.csv") %>% 
+  pivot_longer(cols = -date, names_to = "location_short", values_to = "GLOFAS") 
+
+glofas %>% 
+  group_by(location_short) %>% 
+  summarize(range(GLOFAS))
+
+#great all 11 are now available for comparison
+left_join(chin_sites_allQ %>% distinct(location_short),
+          glofas %>% distinct(location_short) %>% mutate(glofas = 1))
+
+chin_allq2 <- left_join(chin_sites_allQ, glofas)
+
+
+```
+
+Differences in distributions of daily streamflow across datasets.
+
+```{r histograms of fall daily q}
+chin_allq2 %>% 
+  pivot_longer(cols = c(Measured, GRFR, GLOFAS), names_to = "data_source", values_to = "flow_cms") %>%
+  filter(month(date) %in% 8:11) %>% 
+  ggplot(aes(x = flow_cms, color = data_source)) +
+  geom_freqpoly(alpha = 0.4) +
+  facet_wrap(~Location, scales = "free") +
+  theme_bw()
+```
+
+Pairwise correlations and rmse for observed and predicted streamflow in these two datasets.
+
+```{r}
+
+model_summ <- chin_allq2 %>% 
+  mutate(grfr_sqe = (GRFR - Measured)^2,
+         glofas_sqe = (GLOFAS - Measured)^2) %>%  
+  group_by(Location) %>%
+  summarize(grfr_rmse = sqrt(mean(grfr_sqe)),
+            grfr_r = cor(GRFR, Measured),
+            glo_rmse = sqrt(mean(glofas_sqe)),
+            glo_r = cor(GLOFAS, Measured)) 
+
+model_summ %>% 
+  summarize(mean(grfr_r),
+            sd(grfr_r),
+            mean(glo_r),
+            sd(glo_r))
+```
+
+
+
+Correlations between maximum fall daily streamflow between measured and modeled datasets. This metric is important for our analysis because we hypothesize that fall maximum daily discharge mobilizes gravels and may lead to redd scour and reduced Chinook productivity.
+
+```{r grfr versus observed max fall daily Q, eval = FALSE}
+chin_allq2 %>%
+  filter(month(date) %in% 8:11) %>% 
+  group_by(Location, sampleYear) %>% 
+  summarize(max_fall_obsQ = max(Measured),
+            max_fall_modQ = max(GRFR)) %>% 
+  ggplot() + 
+  geom_point(aes(x = max_fall_obsQ, y = max_fall_modQ, color = sampleYear)) +
+  geom_point(aes(x = max_fall_modQ, y = max_fall_obsQ), alpha = 0) + #to make plot square
+  geom_abline(aes(intercept = 0, slope = 1), linetype = 2, color = "dark gray") +
+  geom_smooth(aes(x = max_fall_obsQ, y = max_fall_modQ, color = sampleYear), method = "lm") +
+  stat_cor(aes(x = max_fall_obsQ, y = max_fall_modQ, color = sampleYear),
+           p.accuracy = 0.001, r.accuracy = 0.01, size = 3) +
+  facet_wrap(~Location, scales = "free") +
+  labs(x = "Observed Streamflow", y = "GRFR") +
+  theme_bw()
+
+# ggsave("output/grfr_validation_11sites.jpeg", width = 10)
+
+```
+
+
+```{r glofas versus observed max fall daily Q, eval = FALSE}
+chin_allq2 %>%
+  filter(month(date) %in% 8:11) %>% 
+  group_by(Location, sampleYear) %>% 
+  summarize(max_fall_obsQ = max(Measured),
+            max_fall_modQ = max(GLOFAS)) %>% 
+  ggplot() + 
+  geom_point(aes(x = max_fall_obsQ, y = max_fall_modQ, color = sampleYear)) +
+  geom_point(aes(x = max_fall_modQ, y = max_fall_obsQ), alpha = 0) + #to make plot square
+  geom_abline(aes(intercept = 0, slope = 1), linetype = 2, color = "dark gray") +
+  geom_smooth(aes(x = max_fall_obsQ, y = max_fall_modQ, color = sampleYear), method = "lm") +
+  stat_cor(aes(x = max_fall_obsQ, y = max_fall_modQ, color = sampleYear),
+           p.accuracy = 0.001, r.accuracy = 0.01, size = 3) +
+  facet_wrap(~Location, scales = "free") +
+  labs(x = "Observed Streamflow", y = "GLOFAS") +
+  theme_bw()
+
+# ggsave("output/glofas_validation_9sites.jpeg", width = 10)
+
+```
+
+Are there any years with significant missing observed data that could be driving the mismatches?
+
+```{r}
+chin_allq2 %>% 
+  group_by(location_short) %>% 
+  filter(month(date) %in% 8:11) %>% 
+  count(sampleYear) %>% 
+  filter(n < 122)
+```
+
+
+
+This rolling pdf has two plots for each site. One plot has daily time series of fall daily streamflow faceted by year (only most recent 6 years shown as an example since some sites have ~40 years) and the second plot reproduces the correlation between maximum daily fall streamflow across years for each site.
+
+```{r pdf of modeled versus observed streamflow time series, eval = FALSE}
+
+flow_sites <- chin_allq2 %>% 
+  distinct(Location, SiteID, sampleYear) %>% 
+  count(Location, SiteID)
+
+
+pdf("output/DailyFlow_11sites.pdf")
+for(i in 1:nrow(flow_sites)) {
+ 
+  dat <- left_join(flow_sites %>% slice(i), chin_allq2) %>%
+    pivot_longer(cols = c(Measured, GRFR, GLOFAS), names_to = "data_source", values_to = "flow_cms") %>%
+    group_by(SiteID) %>% 
+    mutate(maxYear = max(sampleYear)) %>% 
+    filter(sampleYear %in% (maxYear - 5):maxYear,
+           month(date) %in% 8:11)  
+  
+  p1 <- dat %>% 
+    ggplot(aes(x = date)) +
+    geom_line(aes(y = flow_cms, color = data_source)) +
+    scale_x_date(date_labels = "%b") +
+    facet_wrap(~sampleYear, scales = "free_x",
+               labeller = labeller(Location = label_wrap_gen(30))) +
+    labs(title = flow_sites %>% slice(i) %>% pull(Location),
+         y = bquote("Discharge "~(m^3/s))) +
+    theme(legend.position = "bottom", axis.title.x = element_blank())
+
+  p2 <- left_join(flow_sites %>% slice(i), chin_allq2) %>%
+    filter(month(date) %in% 8:11) %>% 
+    group_by(Location, sampleYear) %>% 
+    summarize(max_fall_obsQ = max(Measured),
+              max_fall_modQ = max(GRFR)) %>% 
+    ggplot() + 
+    geom_point(aes(x = max_fall_obsQ, y = max_fall_modQ, color = sampleYear)) +
+    geom_point(aes(x = max_fall_modQ, y = max_fall_obsQ), alpha = 0) +
+    geom_abline(aes(intercept = 0, slope = 1)) +
+    stat_cor(aes(x = max_fall_obsQ, y = max_fall_modQ, color = sampleYear), 
+             p.accuracy = 0.001, r.accuracy = 0.01, size = 3) +
+    labs(x = "Observed Streamflow", y = "GRFR", title = "Maximum Daily Streamflow",
+         color = "Year")
+  
+  p3 <- left_join(flow_sites %>% slice(i), chin_allq2) %>%
+    filter(month(date) %in% 8:11) %>% 
+    group_by(Location, sampleYear) %>% 
+    summarize(max_fall_obsQ = max(Measured),
+              max_fall_modQ = max(GLOFAS)) %>% 
+    ggplot() + 
+    geom_point(aes(x = max_fall_obsQ, y = max_fall_modQ, color = sampleYear)) +
+    geom_point(aes(x = max_fall_modQ, y = max_fall_obsQ), alpha = 0) +
+    geom_abline(aes(intercept = 0, slope = 1)) +
+    stat_cor(aes(x = max_fall_obsQ, y = max_fall_modQ, color = sampleYear), 
+             p.accuracy = 0.001, r.accuracy = 0.01, size = 3) +
+    labs(x = "Observed Streamflow", y = "GLOFAS", title = "Maximum Daily Streamflow",
+         color = "Year")
+
+  
+    grid.arrange(p1, p2, p3, layout_matrix = rbind(c(1,1,1,1),
+                                             c(1,1,1,1),
+                                             c(1,1,1,1),
+                                             c(2,2,3,3),
+                                             c(2,2,3,3)))
+}
+dev.off()
+
+```
+
+
+
+Plot just one site similar to above, but show the entire summer season and also the max fall correlations.
+
+
+```{r chena river time series}
+
+chin_allq2 %>% 
+  distinct(location_short, sampleYear) %>% 
+  count(location_short) %>% 
+  arrange(desc(n))
+
+#Chena and Ross both have 40 years of data
+chena_qdat <- chin_allq2 %>%
+  filter(location_short == "Chena") %>% 
+  pivot_longer(cols = c(Measured, GRFR, GLOFAS), names_to = "data_source", values_to = "flow_cms") %>%
+  group_by(SiteID) %>% 
+  mutate(maxYear = max(sampleYear)) %>% 
+  filter(sampleYear %in% (maxYear - 5):maxYear,
+         month(date) %in% 6:11)  
+
+c1 <- chena_qdat %>% 
+  ggplot(aes(x = date)) +
+  geom_line(aes(y = flow_cms, color = data_source, size = data_source)) +
+  scale_x_date(date_labels = "%b") +
+  scale_color_manual(values = c("red", "blue", "black")) +
+  scale_size_manual(values = c(0.3, 0.3, 0.8)) +
+  # scale_linetype_manual(values = c("dashed", "dashed", "solid")) +
+  facet_wrap(~sampleYear, scales = "free_x",
+             labeller = labeller(Location = label_wrap_gen(30))) +
+  labs(title = "Chena River",
+       y = bquote("Discharge "~(m^3/s)), color = "") +
+  theme_bw() +
+  theme(legend.position = "bottom", axis.title.x = element_blank(),
+        text = element_text(size = 18)) +
+  guides(size = "none")
+
+c1
+ggsave(plot = c1, "output/Chena streamflow time series.jpeg", width = 10, height = 7)
+```
+
+
+```{r chena river max flow}
+
+c2 <- chin_allq2 %>% 
+  filter(month(date) %in% 8:11, location_short == "Chena") %>% 
+  group_by(Location, sampleYear) %>% 
+  summarize(max_fall_obsQ = max(Measured),
+            max_fall_modQ = max(GRFR)) %>% 
+  ggplot() + 
+  geom_point(aes(y = max_fall_obsQ, x = max_fall_modQ, color = sampleYear)) +
+  geom_point(aes(y = max_fall_modQ, x = max_fall_obsQ), alpha = 0) +
+  geom_abline(aes(intercept = 0, slope = 1), show.legend = FALSE) +
+  stat_cor(aes(y = max_fall_obsQ, x = max_fall_modQ, color = sampleYear), 
+           p.accuracy = 0.001, r.accuracy = 0.01, size = 5) +
+  labs(y = "Observed Streamflow", x = "GRFR", color = "Year") +
+  theme_bw() +
+  theme(text = element_text(size = 18)) 
+
+c3 <- chin_allq2 %>%
+  filter(month(date) %in% 8:11, location_short == "Chena") %>% 
+  group_by(Location, sampleYear) %>% 
+  summarize(max_fall_obsQ = max(Measured),
+            max_fall_modQ = max(GLOFAS)) %>% 
+  ggplot() + 
+  geom_point(aes(y = max_fall_obsQ, x = max_fall_modQ, color = sampleYear)) +
+  geom_point(aes(y = max_fall_modQ, x = max_fall_obsQ), alpha = 0) +
+  geom_abline(aes(intercept = 0, slope = 1), show.legend = FALSE) +
+  stat_cor(aes(y = max_fall_obsQ, x = max_fall_modQ, color = sampleYear), 
+           p.accuracy = 0.001, r.accuracy = 0.01, size = 5) +
+  labs(t = "Observed Streamflow", x = "GLOFAS", color = "Year") +
+  theme_bw() +
+  theme(text = element_text(size = 18), axis.title.y = element_blank())
+
+c4 <- c2 + c3 +
+  plot_annotation(title = "Chena River") +
+  plot_layout(guides = "collect") &
+  theme(plot.tag = element_text(size = 18),
+        text = element_text(size = 18))
+
+c4
+ggsave("output/Chena flow comparison.jpeg", plot = c4, width = 10, height = 6)
+
+```
+
+
+
+
+
+
+
+

@@ -1,0 +1,359 @@
+---
+title: "Run Reconstruction Sites"
+author: "Megan Feddern"
+date: "Living Document"
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: '5'
+  html_document:
+    highlight: textmate
+    theme: readable
+    toc: yes
+    toc_depth: 5
+    toc_float: yes
+---
+```{r libs, include=FALSE, echo=FALSE}
+
+#if you use a shiny app inside markdown you have to have an r chunk that calls ALL of the libraries you are using
+#it is also helpful to just load and filter data in this chunk 
+
+library(utils)
+library(stats)
+library(utils)
+library(datasets)
+library(graphics)
+library(shiny)
+library(grDevices)
+library(methods)
+library(leaflet)
+library(dplyr)
+library(shinycssloaders)
+library(rgdal)
+library(plotly)
+library(htmltools)
+library(DT)
+library(shinyjs)
+library(shinythemes)
+library(rsconnect)
+library(tidyr)
+library(tidyverse)
+library(forcats)
+library(flextable)
+library(shinyWidgets)
+library(ggplot2)
+```
+#Unalakleet
+
+#Goodnews Middle Fork
+
+![Figure 1](Goodnews.png)
+![Figure 2](GoodnewsAerial.png)
+
+##Summary of the reconstruction
+
+The Goodnews River has two major forks, the North Fork and the Middle fork. The weir is located on the Middle Fork and *aerial survey data* is available for ~ 50% of years on both forks with "fair" or better rating. Harvest on the Goodnes is *District W5* which is harvest from both the North Fork and the Middle Fork. There is also small subsistence (<1,000 fish) and sport (<10 0fish most years) catch. There is age composition data for both MF Escpement at the Weir (1980-2017) and for W5 district harvest (1990-2018). 
+
+The approach:
+1. Aerial survey data can be used to come up with an aerial survey correction factor. The data can be expanded to come up with a basin wide escapement estimate for the MF+NF
+
+2. The basin wide data can then be used to calculate the proportion of the run that returns to the MF. This can then be used to estimate the portion of harvest that is from the MF
+
+3. MF harvest data can be combined with the harvest age composition to generate a brood table for harvest
+
+4. MF Escapement data can be combined with escapement age composition to generate and escapement brood table
+
+5. These data can be combined to generate overall brood table and recruits estimate
+
+## Escapement Estimates
+
+Escapement is estimated from a weir at the Middle Fork of the Goodnews River. Historic Escapement estimates (1981-2009) are reported in [Taylor and Elison 2009](https://www.adfg.alaska.gov/fedaidpdfs/Fds10-64.pdf) Table 1. Recent escapement for 2010-2017 are reported in [Froning and Smith 2020](https://www.adfg.alaska.gov/FedAidPDFs/RIR.3A.2020.06.pdf) Table 41. These are the values used for this reconstruction.  
+
+## Calculating Harvest for MF from basin estimates
+Harvest data is collected basin wide which includes the North Fork of Goodnews River. The weir is located on the Middle Fork of the Goodnews River and aerial surveys are taken of both the North and Middle Forks. 
+
+###Generating expansion factor from aerial surveys
+
+A drainage wide escapement estimate can be esstimated, and this can then be used to portion harvest between the North Fork and the Middle Fork. Commercial harvest for the Goodnews basin is area W5. This approach is used in ADFG reports to estimate explotation rates
+
+*Equation 1*
+ 
+\begin{equation} 
+  N_d = \frac{n_{a,nf} * n_{w}}{n_{a,mf}} + n_w,
+\end{equation} 
+
+where:
+N_d = total drainage escaoement estimate
+n_{a,nf} = aerial survey count from the North Fork of the Goodnews River
+n_{a,mf} = aerial survey count from the Middle Fork of the Goodnews River
+n_w = final weir escapemetn count including any estimates
+	
+Historic aerial survey data is reported in [Linderman 2004](http://www.adfg.alaska.gov/fedaidpdfs/fds05-41.pdf) Appendix C1 which includes 1980 - 2004. This dataset includes 9 years where the aerial surveys were considered 'poor' and not used for exploitation rate. Linderman 2004 used the escapement estimate ratio from 1983-1989 for the missing years. 
+
+We used the data reported in Linderman 2004 for aerial surveys 1980-2004, we added years 2005-2020 from the ADFG AYK database. This includes a total of 20 missing years, 9 between 1980-2004 and 11 between 2005-2020. Missing years from 1980-2004 used the escapment estimate ratio from 1983-1989 per Linderman 2004 methods. The escapement ratio increased in the 2000s, missing years and missing values after 2004 used the long term average (from 1980-2020). Using a more recent average is one potential alternative approach.
+
+```{r}
+#Reading in the escapement dataset
+Escapement <- read.csv('GoodnewsEscapement.csv')
+
+#Calculating the escapement ratio from aerial surveys
+Escapement <-Escapement %>% 
+ mutate(EscapementRatio = as.numeric(Aerial.Chinook.North.Fork/Aerial.Chinook.MF.Goodnews))
+
+#Calculating the historic escapement ratio average
+historic.ratio <- Escapement %>% 
+ filter(Year >= 1983 & Year <= 1989)%>% 
+  summarize(Mean = as.numeric(mean(EscapementRatio, na.rm=TRUE)))
+
+#Calculating the long term escapement ratio average
+longterm.ratio <- Escapement %>% 
+  summarize(Mean = mean(EscapementRatio, na.rm=TRUE))
+
+#Filling in the NAs of escapment ratio dataset
+Escapement <- Escapement %>% 
+  mutate(EscapementRatio = ifelse(Year >= 1980 & Year <= 2004 & is.na(as.numeric(EscapementRatio)),
+                as.numeric(historic.ratio),
+      ifelse(Year > 2004 & is.na(EscapementRatio), as.numeric(longterm.ratio),as.numeric(EscapementRatio))))
+ 
+
+```
+
+###Calculating proportion of total run returning to the Middle Fork
+
+Using the calculated escapement ratios and rearranging equation 1 we can calculate drainage wide escapement and escapement specific to the North fork. We can then calculate teh proportion of the run that returned to the middle fork
+
+```{r}
+
+Escapement <- Escapement %>% 
+ mutate(Drainage.Escapement = as.numeric(EscapementRatio)*MF.Weir.Ecapement+MF.Weir.Ecapement)%>% #calculate drainage wide escapement
+ mutate(NF.Escapement = Drainage.Escapement-MF.Weir.Ecapement)%>% #calculate NF escapement
+  mutate(Proportion.MF = MF.Weir.Ecapement/Drainage.Escapement) #calculate proportion of run that returned to MF
+
+```
+
+###Estimating harvest from Middle Fork
+
+[Taylor and Elison 2009](https://www.adfg.alaska.gov/fedaidpdfs/Fds10-64.pdf)in Appendix A report historic commercial, subsistence, and sport fishing harvest estimates from 1968 - 2007 for the entire Goodnews drainage. [Salmon age, sex, and length catalog for the Kuskokwim area 2018](https://www.adfg.alaska.gov/FedAidPDFs/RIR.3A.2020.06.pdf) contains commercial harvest estimates from 1990-2015. We used these values for 2008-2015. For recent years with missing values, a five year average was used for each harvest type.
+
+
+```{r}
+#Reading in the harvest dataset
+Harvest <- read.csv('GoodnewsHarvest.csv')
+
+#Calculating the subsistence ratio average
+subsistence.5yr <- Harvest %>% 
+ filter(Year >= 2003 & Year <= 2007)%>% 
+  summarize(Mean = mean(as.numeric(Subsistence.Total.Drainage)))
+
+#Calculating the commercial ratio average
+commercial.5yr <- Harvest %>% 
+ filter(Year >= 2011 & Year <= 2015)%>% 
+  summarize(Mean = mean(as.numeric(Commercial.Total.Drainage)))
+
+#Calculating the sport harvest average
+sport.5yr <- Harvest %>% 
+ filter(Year >= 2004 & Year <= 2008)%>% 
+  summarize(Mean = mean(as.numeric(Sport.Total.Drainage)))
+
+#Adding harvest averages- and calculating drainage wide harvest
+Harvest <- Harvest %>% 
+  mutate(Sport.Total.Drainage = ifelse(is.na(Sport.Total.Drainage),       as.numeric(sport.5yr),as.numeric(Sport.Total.Drainage)))%>%
+  
+  mutate(Commercial.Total.Drainage = ifelse(is.na(Commercial.Total.Drainage),                          as.numeric(commercial.5yr),as.numeric(Commercial.Total.Drainage)))%>%
+  
+  mutate(Subsistence.Total.Drainage = ifelse(is.na(Subsistence.Total.Drainage),                            as.numeric(subsistence.5yr),as.numeric(Subsistence.Total.Drainage)))%>%
+  
+  mutate(Total.Drainage.Harvest = as.numeric(Subsistence.Total.Drainage)+as.numeric(Commercial.Total.Drainage)+as.numeric(Sport.Total.Drainage))
+
+#Combining datasets to calculate total MF returns
+Escapement<-  
+  left_join(Harvest,Escapement,  by = 'Year')
+Escapement$Proportion.MF[1:12]<-mean(Escapement$Proportion.MF[13:15])
+
+Escapement<-  Escapement%>%
+  mutate(MF.Harvest = as.numeric(Proportion.MF)*as.numeric(Commercial.Total.Drainage))%>%
+  mutate(MF.Returns = as.numeric(MF.Harvest)+as.numeric(MF.Weir.Ecapement))
+
+
+```
+
+## Age composition values
+
+###Harvest Age Composition
+Harvest age structure is available from 1990-2015 from [Salmon age, sex, and length catalog for the Kuskokwim area 2018](https://www.adfg.alaska.gov/FedAidPDFs/RIR.3A.2020.06.pdf) in Table 38. Age composition is missing from 2015 onward and prior to 1990. A historic harvest age comp was calculated for prior to 1990 using the average age comp from 1990-1995. Similarly, a modern age comp was calculated from 2010-2015 and used as the harvest age comp from 2016-2018. Historic harvest numbers from 1968-2007 is available in [Taylor and Elison 2009](https://www.adfg.alaska.gov/fedaidpdfs/Fds10-64.pdf) without age composition
+```{r}
+#Reading in the harvest age composition dataset
+#HarvestAge <- read.csv('Chinook/Data/Goodnews/HarvestAgeComp.csv')
+HarvestAge <- read.csv('HarvestAgeComp.csv')
+
+#Calculating the historic harvest age composition
+historic.harvage <- HarvestAge %>% 
+ filter(Year >= 1990 & Year <= 1995)%>% 
+   summarise(across(4:15, mean))
+
+#Calculating the modern harvest age composition
+recent.harvage <- HarvestAge %>% 
+ filter(Year == 2015 | Year >= 2009 & Year <= 2013)%>% 
+   summarise(across(4:15, mean))
+
+#Filling in the years without Age composition
+
+HarvestAge[1:20,4:15]<-historic.harvage
+HarvestAge[27,4:15]<-historic.harvage
+HarvestAge[45,4:15]<-recent.harvage
+HarvestAge[47:48,4:15]<-recent.harvage
+HarvestAge[39,4:15]<-recent.harvage
+HarvestAge[47:48,3]<-mean(HarvestAge[43:46,3])
+#Summing Columns based on total age
+HarvestAge <- HarvestAge %>% 
+ mutate(Age3 = X1.1)%>%
+  mutate(Age4 = X1.2+X2.1)%>%
+  mutate(Age5 = X0.4+X1.3+X2.2)%>%
+  mutate(Age6 = X1.4+X2.3)%>%
+  mutate(Age7 = X1.5+X2.4)%>%
+  mutate(Age8 = X2.5)%>%
+  mutate(MF.Harvest = Escapement$MF.Harvest[2:49])%>%
+  select(Year, MF.Harvest, Age3, Age4, Age5, Age6, Age7, Age8)
+
+
+```
+
+
+###Escapement Age Composition
+Escapement age structure is available from 1990-2017 from [Salmon age, sex, and length catalog for the Kuskokwim area 2018](https://www.adfg.alaska.gov/FedAidPDFs/RIR.3A.2020.06.pdf) in Table 41. Historic Escapment age structure for 1981-2009 is availbale in the form of a brood table in [Taylor and Elison 2009](https://www.adfg.alaska.gov/fedaidpdfs/Fds10-64.pdf) Table 1.  1998 and 1999 does not have age structure and the average age structure from 1993-1997 was used for these years.
+```{r}
+#Reading in the Escapement age composition dataset 1991-2017
+EscapementAge <- read.csv('EscapementAgeComp.csv')
+#Reading in the Brood Table 1981-2009
+Brood2009 <- read.csv('BroodTable2009.csv')
+
+#Calculate ave 1993-1997
+
+historic.escage <- EscapementAge %>% 
+ filter(Year >= 1993 & Year <= 1997)%>% 
+   summarise(across(4:12, mean))
+EscapementAge[18:19,4:12]<-historic.escage
+
+#Summing Columns based on total age and adding years of escapement
+EscapementAge <- EscapementAge %>% 
+ mutate(Age3 = X1.1)%>%
+  mutate(Age4 = X1.2)%>%
+  mutate(Age5 = X1.3+X2.2)%>%
+  mutate(Age6 = X1.4+X2.3)%>%
+  mutate(Age7 = X1.5+X2.4)%>%
+  mutate(Age8 = X2.5)%>%
+  select(Year, Total.Escapement, Age3, Age4, Age5, Age6, Age7, Age8)
+EscapementAge$Year<-as.numeric(EscapementAge$Year)
+EscapementAge$Total.Escapement<-as.numeric(EscapementAge$Total.Escapement)
+
+#Initiating a data frame for the brood table
+BroodEsc<-data.frame(matrix(ncol=8,nrow=length(EscapementAge$Year)))
+```
+
+###Calculating recruits for escapement
+ This was done separately from harvest and then combined due to the nature of the 2 age structure datasets used to reconstruct recruits from escapement
+```{r}
+#creating function to run the brood table
+BroodFunc  <- function(data) {
+  for(i in 8:length(data$Year)){
+    for(j in 3:8){
+      BroodEsc[i-j,j]<- data[i,j]/100*data[i-j,2]
+    }
+  }
+  BroodEsc[,1:2]<- EscapementAge[,1:2]
+  colnames(BroodEsc)<- c("Year", "Escapement", "RAge3", "RAge4", "RAge5","RAge6","RAge7","RAge8")
+  return(BroodEsc)
+}
+#runnig function
+BroodEsc<- BroodFunc(EscapementAge)
+#assigning the brood table data for 1980-1990 from the Taylor and Elison reconstruction
+BroodEsc[1:10,3:8]<-Brood2009[1:10,4:9]
+#getting rid of decimals
+BroodEsc<-round(BroodEsc)
+```
+
+###Recruits from Harvest
+Using harvest age comp combined with the proportion of harvest from the Middle Fork to calculate the number of recruits that produced the harvest
+```{r}
+
+#Initiating dataframe for the harvest brood table
+Brood<-data.frame(matrix(ncol=8,nrow=length(HarvestAge$Year)))
+#writing function (note:go back and get rid of the col names etc. in previous one so it is reproducible)
+BroodFunc  <- function(data) {
+  for(i in 8:length(data$Year)){
+    for(j in 3:8){
+      Brood[i-j,j]<- data[i,j]/100*data[i-j,2]
+    }
+  }
+  Brood[,1:2]<- HarvestAge[,1:2]
+  colnames(Brood)<- c("Year", "Escapement", "RAge3", "RAge4", "RAge5","RAge6","RAge7","RAge8")
+  return(Brood)
+}
+
+#running function
+BroodHar<- BroodFunc(HarvestAge)
+#getting rid of decimals
+BroodHar<-round(BroodHar)
+```
+
+###Combining Harvest Recruits and Escapement Recruits
+Harvest and escapement recruits were done separately because 1) they had distinct age structure and 2) there escpement age structure was from a brood table for 1980-1989 and from the measured age composition from 1990 onward.
+```{r}
+#combining the brood tables
+BroodTotal <- left_join(BroodEsc, BroodHar, by="Year")
+#summing the number of recruits from harvest with the number of recruits from escapement for total recruits per year
+BroodTotal <- BroodTotal %>% 
+ mutate(Escapement = Escapement.x)%>% 
+ mutate(MF.Harvest = Escapement.y)%>%
+ mutate(Age3 = as.numeric(RAge3.x)+as.numeric(RAge3.y))%>% 
+ mutate(Age4 = as.numeric(RAge4.x)+as.numeric(RAge4.y))%>% 
+ mutate(Age5 = as.numeric(RAge5.x)+as.numeric(RAge5.y))%>% 
+ mutate(Age6 = as.numeric(RAge6.x)+as.numeric(RAge6.y))%>% 
+ mutate(Age7 = as.numeric(RAge7.x)+as.numeric(RAge7.y))%>% 
+ mutate(Age8 = as.numeric(RAge8.x)+as.numeric(RAge8.y))
+
+#cleaning up a final table
+BroodTotal <- BroodTotal %>% 
+ mutate(Recruits = Age3+Age4+Age5+Age6+Age7+Age8)%>% #total recruits
+ mutate(R.S = Recruits/Escapement)%>% #recruits per spawner
+ mutate(Returns = MF.Harvest+Escapement)%>%#total returns
+ select(Year, Escapement, MF.Harvest,Returns, Age3, Age4, Age5, Age6, Age7, Age8, Recruits, R.S) #actually meaningful columns
+
+plot(BroodTotal$Year, BroodTotal$R.S, pch=16)
+
+write.csv(BroodTotal, "GoodNewsBroodTotal.csv")
+```
+##Summary of Assumptions
+
+1. For years without aerial survey data, we assumed the proportion of drainage escapement that returned to the MF was an average value
+
+2. For recent years without subsistence or sport fishing harvest numbers we assumed catch numbers were similar to the most recent 5-year average
+
+3. For harvest aga composition, there was not data prior to 1990. For 1980-1990 it was assumed to be the same as the average harvest age comp from 1990-1995.
+
+4. Missing escapement age com data was assumed to be similar to the average age comp to the prior 5 years. 
+
+##Questions
+1. Should we include subsistence and harvest? Right now its included in code but not analysis. would we expect those to be more similar to harvest age com or escapement?
+2. Some age structure data from the weir was considered poor because not a high enough proportion of the run was measured. I could not find how ADFG dealt with this for their own brood table. For now I used the data but may be worth verifying with Zach
+3. Currently not estimating an uncertainty but now that the data has been wrangled it should be added in. ADFG did not report erroe with escapement, harvest or age estimate, discuss with Curry if we should just use a CV or if we should dig around more to try and generate actuall error
+
+##Notes
+Has been reconstructed from 1981-2002
+
+Two brood tables / productivity estimates have been reconstructed for Goodnews from KNB and ADFG the most upt to date one is from [Taylor and Elison 2009](https://www.adfg.alaska.gov/fedaidpdfs/Fds10-64.pdf) Table 2 p. 20 Report was published in 2006, has data up until 2004 and reports R/S until 1997. See also  [Molyneaux and Bannian 2006](http://www.adfg.alaska.gov/fedaidpdfs/fms06-08.pdf) See: Appendix B1.5 p. 232 for spawner-recruit analysis and relevant explotation information not in a table in the 2009 report.
+
+There was a 2012 and 2013 Goodnews report but neither of these seem to have brood tables...was it updated and just not included or has it not been updated since 2009?
+
+The previously constructed brood tables seem to not include any harvest data! Sum of the age structure is just the weir escapement.
+
+The [Salmon age, sex, and length catalog for the Kuskokwim area 2018](https://www.adfg.alaska.gov/FedAidPDFs/RIR.3A.2020.06.pdf) has the most up to date age information *BUT* the data only go back until 1991 and there is a bit of a dscrepancy between the Kuskokwim wide reports and the Goodnews specific reports in the reported escapement numbers. The percent difference between the two reports is less tha 5% for most years but there are four years that have a difference of 15-24%
+
+
+#Kwiniuk
+
+Escapement data in 1985-2021 but there is only sporadic age data, only one ore two individuals were aged per year. It is an interesting watershed -- some years there are 4 fish returning, some years there are 1,000. It is located on the North side of Norton Sound, so it is completely separate from the Unalakleet and the North River, so fish are migrating in fairly separate locations (implications for assumptions about age)
+
+#Anvik
+
+Escapement data in 1980-2021 but there is only sporadic age data, only one ore two indivviduals were aged per year. Anvik is located between Pilot Station and the confluence with the Giasasa. There is one watershed between Anvik and Pilot (Bosila) and two between Anvik adn Gisasa (Roto and Kaltag)

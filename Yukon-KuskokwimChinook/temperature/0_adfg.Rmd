@@ -1,0 +1,810 @@
+---
+title: "0_adfg"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(readxl)
+library(lubridate)
+library(plotly)
+library(hms)
+library(dataRetrieval)
+```
+
+Questions for Zach:
+
+* lat/long for some missing sites. I'll have to inquire about the DFO ones in aykdbms.
+* sites to compare manual to logger temps? Kwiniuk has both, but logger is only every 6 hours so really not helpful. Would like hourly to compare to their twice daily manual measurements at the weirs.
+
+
+Notes on call with Zach/Erik re ADFG data on 1/13:
+
+- I will add adfg datasets to the temperature sheet on the data inventory. Simple metadata a la akoats will be first goal.
+- Overlay temperature sites with escapement monitoring watersheds to co-locate monitoring sites that can be used to represent spawning and rearing locations.
+- Create a data filter (complete JJA? how many years of complete summer data?) to see if some datasets are better then others. Alternatively, may be able to combine some datasets that are co-located at weirs.
+- FYI from Zach some redundance between ayk dbms download and what they provided on google drive. There is also more data if we find any data gaps they could search them out (may be older or not necesarily co-located with an escapement site). 
+- We also discussed manual measurements (2x day morning and evening) at the weirs, which may be helpful to see how well they capture daily means and also possibly to validate modeled temperature time series.
+
+Notes from chat w Erik 1/25/22:
+- use productivity tab to create watersheds, but some are more complicated from mixed stock genetic assignment. Erik emailed Brendan to ask for Kusko/yukon watersheds from those projects.
+- mainstem sites just encompass those spawning reaches, can get delineations from R. Brown paper. Probably just buffer stream length to intersect temp/flow sites.
+- Erik will also add coarser scale groupings for stocks managed by ADFG, e.g. lower, middle, upper Yukon.
+- I will focus on temperature metadata for now while we get more info on productivity locations.
+
+
+# AYKDBMS data
+
+ADFG sent new file with comma problem fixed. Missing lat/long in first rows forcing to logical, need to set column types manually to avoid parsing failures.
+
+```{r read in data}
+adfg <- read_csv("S:\\Stream Temperature Data\\ADFG_AYK database download\\Water_Temp_AllR3_Data_1-31-2022.csv",
+                 col_types = paste0(rep("c", 24), collapse = ""))
+```
+
+
+Some quality control issues with this db: 
+
+* ~20% of records are missing lat/long
+* it appears that several fields are tied to the site on the online db: project, project year, location, instrument site, lat, long. But, if I search for distinct records, Henshaw creek has an auto-numbered instrumentSite field so I get all 13.5K temp measurements for that site. 
+* fields that repeat along with temp observations in the online db: bank, recording method, recording equip, equip depth category, equip depth in cm, date, time, temperature.
+
+```{r aykdbms qc, eval = FALSE}
+#18K records, not sure why the other fields would have unique entries beyond the site level.
+adfg %>% 
+  select(-obsDateTime, -obsTemperature) %>% 
+  distinct()
+
+#13% of records are missing lat/long
+nrow(adfg %>% filter(is.na(latitude)|is.na(longitude)))/nrow(adfg)
+
+# instrumentSite is auto-numbered for Henshaw creek leading to ~15k records on this 
+adfg %>%
+  select(locationID:siteDescription) %>% 
+  distinct() %>% 
+  # count(latitude, longitude) %>% 
+  # arrange(desc(n)) %>% 
+  filter(latitude == "66.5566666666667")
+
+# a lot of repeated or slight differences in entries associated with lat/long
+adfg %>% 
+  select(project, location, locationID, latitude, longitude) %>% 
+  distinct() %>% 
+  filter(latitude == "62.77745")
+  count(latitude) %>% 
+  arrange(desc(n))
+```
+
+
+Start by creating metadata, looks like instrument site is being used to indicate different locations in a stream (e.g. see Chena and Tanana). There is not a unique site id field that I can find in this database. 
+
+Issues: 
+
+* henshaw creek has an auto-numbered instrument site, strip that off, this is only one site. 
+* salcha and chena have a lot of spot measurements in this database, can probably strip out any unique lat/longs that don't have > 200 measurements.
+
+
+
+```{r more qa, eval = FALSE}
+adfg %>% distinct(location, instrumentSite) %>% count(location)
+
+adfg %>% 
+  mutate(Site = case_when(grepl("ARRI", instrumentSite) ~ "ARRI",
+                          TRUE ~ instrumentSite)) %>% 
+  distinct(location, Site) %>% count(location)
+
+#chena salcha driving the big diffs in lat/long
+adfg %>% 
+    mutate(Site = case_when(grepl("ARRI", instrumentSite) ~ "ARRI",
+                          TRUE ~ instrumentSite)) %>% 
+  count(location, Site, latitude, longitude) %>% 
+  arrange(location)
+  
+adfg %>% 
+  filter(location == "Salcha River") %>% 
+  count(latitude, longitude) %>% 
+  arrange(latitude)
+
+adfg %>% 
+  distinct(location, instrumentSite, recordingEquip, recordingMethod) %>% 
+  arrange(location) %>% 
+  filter(grepl("Aniak", location))
+
+adfg %>% filter(location == "Eagle Sonar (Yukon/Canadian Border)") %>% distinct(recordingEquip)
+```
+
+List of sites with data in AYKDBMS that we can use. Note that several are missing lat/long and these should be tracked down.
+Also, Mayo site is from a restoration project in a side channel, don't include it. Zach Liller provided missing lat/longs for Emmonak and Chandindu, but Chandindu not confirmed, provided confluence location. 
+
+```{r initial md}
+salmon_sites <- c("Chandindu River", "Klondike River", "Nordenskiold River", 
+                  "Kwiniuk River Tower", "Eagle Sonar (Yukon/Canadian Border)", "Emmonak (Village/City)",
+                  "Rapids South (Left) Fish Wheel")
+
+
+adfg_md <- adfg %>% 
+  filter(location %in% salmon_sites) %>% 
+  mutate(Latitude = as.numeric(latitude), 
+         Longitude = as.numeric(longitude)) %>% 
+  distinct(Agency_ID = location, instrumentSite, Latitude, Longitude)
+
+
+adfg_md <- adfg_md %>% 
+  mutate(Latitude = case_when(grepl("Chandindu", Agency_ID) ~ 64 + 15/60 + 70/3600, 
+                              grepl("Emmonak", Agency_ID) ~ 62.7775,
+                              TRUE ~ Latitude),
+         Longitude= case_when(grepl("Chandindu", Agency_ID) ~ -139 - 43/60 - 1/3600, 
+                              grepl("Emmonak", Agency_ID) ~ -164.546,
+                              TRUE ~ Longitude))
+
+```
+
+Probably can remove any recording equipment that includes alcohol or mercury as these are manual measurements.
+
+```{r}
+adfg_dat <- adfg %>% 
+  filter(location %in% salmon_sites,
+         !grepl("Alcohol|Mercury", recordingEquip)) %>% 
+  mutate(dt = parse_date_time(obsDateTime, orders = "Ymd HMS"),
+         sampleDate = as.Date(dt),
+         Temperature = as.numeric(obsTemperature)) %>% 
+  select(location, instrumentSite, recordingEquip, sampleDate, dt, Temperature) %>% 
+  arrange(location, instrumentSite, dt)
+
+#no more indication of manual data
+adfg_dat %>% 
+  distinct(location, instrumentSite, recordingEquip) 
+
+#fix missing instrument site at rapids, should be a 1.
+adfg_dat %>% 
+  filter(is.na(instrumentSite)|instrumentSite == 1, grepl("Rapids", location),
+         year(sampleDate) == 2003) %>% 
+  select(dt, Temperature, instrumentSite)
+
+adfg_dat %>% 
+  filter(is.na(instrumentSite)) %>% 
+  count(location, sampleDate)
+
+adfg_dat <- adfg_dat %>% 
+  mutate(instrumentSite = case_when(is.na(instrumentSite) ~ "1",
+                                    TRUE ~ instrumentSite))
+```
+
+Review sites using interactive plot to check for air temps or burials. First check for all instrument sites and then compare means for different loggers at the same sites. 
+
+* eagle looks fine. Note that temperatures from 2007-2009 were collected every 4 hours, otherwise hourly or 30 minute data. 
+* chandindu looks fine, hourly data, note this is really only 1 year of data, 1995 ends before July 1. 
+* klondike looks ok, hourly data, very cold. Interesting that this site is so cold and stable -- must be groundwater bc not glacial. 
+* mayo looks good, hourly data, only 2 years of data from 2007/2008.
+* nordenskiold - hourly data. Al also provided 10 years of data for later years. 
+* emmonak looks fine, hourly data, only 2 months from 2005.
+* kwiniuk looks fine, but only 2012 here, they provided files for 9 years, read those in below. And, looks like a manual daily temperature. 
+* rapids looks good, 2002-2004 data were collected every 6 hours, otherwise hourly data. 
+
+
+```{r interactive plots for qa, eval = FALSE}
+adfg_sites_list <- adfg_dat %>% distinct(location, instrumentSite) %>% 
+  arrange(location, instrumentSite) #16 total
+
+i = 12
+p1 <- left_join(adfg_sites_list %>% slice(i),
+                adfg_dat) %>% 
+  complete(sampleDate = seq(min(sampleDate), max(sampleDate), by = 1)) %>% 
+  filter(month(sampleDate) %in% 6:9) %>%
+  group_by(location, sampleDate) %>% 
+  summarize(meanDT = mean(Temperature),
+            maxDT = max(Temperature),
+            minDT = min(Temperature)) %>% 
+  mutate(day = format(sampleDate, "%m-%d")) %>% 
+  ggplot(aes(x = as.Date(day, format = "%m-%d"))) +
+  geom_line(aes(y = meanDT)) +
+  geom_point(aes(y = meanDT)) +
+  geom_line(aes(y = maxDT), color = "red") +
+  geom_line(aes(y = minDT), color = "blue") +
+  facet_wrap(~year(sampleDate)) +
+  labs(title = paste(adfg_sites_list %>% slice(i) %>% pull(location),
+                     adfg_sites_list %>% slice(i) %>% pull(instrumentSite)))
+  
+ggplotly(p1)  
+  
+```
+
+Some strange patterns to drop at Nordenskiold and also one date at Eagle Sonar and at rapids, otherwise everything looks fine.
+
+```{r remove air temps}
+
+adfg_drop_dates <- read_csv("adfg_site_qa.csv")
+
+#expand dates
+adfg_drop_dates <- adfg_drop_dates %>% 
+  filter(!start_date %in% c("drop", "ok")) %>% 
+  mutate(start_date = as.Date(start_date, format = "%m/%d/%Y"),
+         end_date = as.Date(end_date, format = "%m/%d/%Y")) %>% 
+  rowwise() %>%
+  transmute(location, instrumentSite,
+            sampleDate = list(seq(start_date, end_date, by = "day"))) %>%
+  unnest(sampleDate) %>% 
+  mutate(remove = 1) %>% 
+  mutate(instrumentSite = as.character(instrumentSite))
+
+
+adfg_dat2 <- adfg_dat %>%
+  left_join(adfg_drop_dates) %>% 
+  filter(is.na(remove), !grepl("Kwiniuk", location)) %>% 
+  select(-remove)
+```
+
+Compare duplicate loggers at the same sites and pick one or average.
+
+* eagle site 1 looks more complete, but double check by counting by year
+* chandindu only site 1
+* klondike site 1 looks like intragravel temps and site 2 likely surface temps
+* mayo site 2 looks like intragravel temps and sites 1 and 3 surface temps
+* nordenskiold will need both sites to make a complete dataset, looks like they are from different years
+* emmonak the two loggers deviate by about 1 degree later in summer, unlikely I'll have a use for this data anyways
+* rapids no differences between loggers, use 1 and NA to make a complete dataset
+
+```{r review duplicate loggers, eval = FALSE}
+adfg_locs <- adfg_dat2 %>% distinct(location)
+
+for(i in 1:nrow(adfg_locs)) {
+  p1 <- adfg_locs %>% 
+    slice(i) %>% 
+    left_join(adfg_dat2) %>% 
+    filter(month(sampleDate) %in% 6:9) %>% 
+    group_by(instrumentSite, sampleDate) %>% 
+    summarize(meanDT = mean(Temperature)) %>% 
+    mutate(day = format(sampleDate, "%m-%d")) %>% 
+    ggplot(aes(x = as.Date(day, format = "%m-%d"))) +
+    geom_line(aes(y = meanDT, color = instrumentSite)) +
+    facet_wrap(~year(sampleDate)) +
+    labs(title = adfg_locs %>% slice(i) %>% pull(location))
+  print(p1)
+}
+
+
+```
+
+Create complete set of dailies by removing loggers that aren't needed (intra-gravel temps) and averaging across loggers that are about the same (all the rest). Also merge with sample interval to ensure that only calculating daily averages when there are 90% of days from a site (removes 46 incomplete days). For loggers that were only logging at 4-6 hour intervals, make sure all measurements were collected (used 90% cutoff).
+
+Check that no duplicate dates after converting to dailies. Also double-check metadata is what we need and keep combining with other datasets below.
+
+```{r create daily file}
+adfg_intervals <- adfg_dat2 %>% 
+  count(location, instrumentSite, year = year(sampleDate), sampleDate, name = "count_perday") %>% 
+  count(location, instrumentSite, year, count_perday, name = "count_peryear") %>%
+  arrange(location, instrumentSite, year, count_perday) %>% 
+  filter(count_peryear > 10) 
+
+
+
+adfg_daily <- left_join(adfg_dat2 %>% mutate(year = year(sampleDate)), adfg_intervals %>% select(-count_peryear)) %>% 
+  filter(!(grepl("Mayo", location) & instrumentSite == 2 |
+           grepl("Klondike", location) & instrumentSite == 1)) %>%
+  group_by(location, sampleDate) %>% 
+  mutate(day_ct = n(),
+         day_per = day_ct/count_perday) %>% 
+  filter(day_per >= 0.9) %>% #ensures that all 6/6 and 4/4 measurements needed for earlier loggers
+  summarize(meanDT = mean(Temperature),
+            maxDT = max(Temperature),
+            minDT = min(Temperature)) %>% 
+  rename(Agency_ID = location)
+
+#complete days filter
+# 5787-5741 = 46 
+
+adfg_daily %>% 
+  count(Agency_ID, sampleDate) %>% 
+  distinct(n)
+
+```
+
+Clean up metadata to only include sites/locations in final data file for 7 sites:
+
+* remove kwiniuk
+* keep chandindu, eagle, emmonak, rapids site 1
+* keep klondike, nordenskiold site 2
+
+Missing lat/long for two canadian sites, may be a low priority, but emailed Zach to see if he can find them. 3/31/22.
+
+```{r final aykdbms md}
+
+adfg %>% filter(grepl("Eagle", location), is.na(instrumentSite)) #mercury
+adfg %>% filter(grepl("Eagle", location), instrumentSite == "HH_1") %>% distinct(recordingMethod) #manual
+
+adfg_md <- adfg_md %>% 
+  filter((grepl("Chandindu|Eagle|Emmonak|Mayo|Rapids", Agency_ID) & instrumentSite == "1") |
+           (grepl("Klondike|Norden", Agency_ID) & instrumentSite == "2")) %>% 
+  select(Agency_ID, Latitude, Longitude) %>% 
+  mutate(SourceName = "ADFG",
+         Parameter = "Temperature", 
+         SiteID = paste0("adfg_", word(Agency_ID)))
+
+adfg_md <- adfg_md %>% 
+  mutate(Waterbody_name = case_when(grepl("Eagle|Rapids|Emmonak", SiteID) ~ "Yukon River",
+                                    grepl("Chandindu", SiteID) ~ "Chandindu River",
+                                    grepl("Klondike", SiteID) ~ "Klondike River",
+                                    grepl("Mayo", SiteID) ~ "Mayo River",
+                                    grepl("Nordenskiold", SiteID) ~ "Nordenskiold River"))
+```
+
+Get SiteIDs onto data frame and remove the original agency ids, which are in the metadata.
+
+```{r SiteID on adfg_daily}
+
+adfg_daily <- left_join(adfg_daily %>% ungroup(), adfg_md %>% select(Agency_ID, SiteID)) %>% 
+  select(-Agency_ID)
+
+adfg_daily %>% 
+  filter(SiteID == "adfg_Chandindu")
+```
+
+```{r plots of daily statistics}
+
+sites <- adfg_daily %>% distinct(SiteID) %>% pull(SiteID)
+
+# pdf("output/dailies_33sites.pdf")
+for(i in sites) {
+  dat <- adfg_daily %>% 
+    filter(SiteID %in% i) %>% 
+    mutate(sampleYear = year(sampleDate), yday = as.numeric(format(sampleDate, "%j"))) %>% 
+    complete(sampleYear, yday = 120:275) %>% 
+    filter(yday %in% 120:275)
+  p1 <- dat %>% 
+    ggplot() +
+    geom_line(aes(x = yday, y = meanDT)) +
+    geom_line(aes(x = yday, y = minDT), color = "blue") +
+    geom_line(aes(x = yday, y = maxDT), color = "red") +
+    labs(title = i) +
+    facet_wrap(~sampleYear)
+  print(p1)
+}
+
+ggplotly(p1)
+# dev.off()
+
+```
+
+
+
+# Extra ADFG data 
+
+## Kuskokwim mainstem temperatures
+
+Kuskokwim River mainstem temperatures for migration: bethel test fishery is manual data, sonar is hobo data from summer only (when sonar in operation) from recent years, Kalskag fish wheel is hobo data.
+
+To add in:
+
+* bethel and aniak logger data on arrays (both top and middle or bottom)
+* aniak test fishery -- I don't think I've ever received this data.
+
+### Kuskokwim Logger Arrays at Bethel and Aniak
+
+```{r}
+
+```
+
+
+
+### Kuskokwim Sonar
+
+Sonar data is very cold (and suspicious) in 2018, try to double check against other data from Kuskokwim. Not sure about frequency of data collection or location because provided as dailies.
+
+```{r kusko sonar}
+kusko_sonar <- read_excel("S:/Stream Temperature Data/ADFG_AYK files/Mainstem sonar temp data 2017-2021.xlsx")
+
+kusko_sonar <- kusko_sonar %>% 
+  mutate(day = substr(as.character(`...1`), 6, 11)) %>% 
+  pivot_longer(cols = `2017`:`2021`, names_to = "year", values_to = "meanDT") %>% 
+  mutate(sampleDate = as.Date(paste(year, day, sep = "-")),
+         SiteID = "adfg_Kuskokwim_Sonar") %>% 
+  filter(!is.na(meanDT)) %>% 
+  select(SiteID, sampleDate, meanDT)
+
+kusko_sonar %>% 
+  mutate(day = format(sampleDate, "%m-%d"),
+         year = year(sampleDate)) %>%
+  ggplot(aes(x = as.Date(day, format = "%m-%d"), y = meanDT, color = as.factor(year))) +
+  geom_line() 
+```
+
+From Ben Gray in regards to Bethel TF data: "the data are from 1984-2019, typically during the dates of June 1 – Aug 24. Water temperatures are taken twice daily about 1-2 hours after a posted high tide in a standard region of the BTF drift zone at an approximate depth of 0.5 m".
+On this sheet, it indicates that the lowest temperature value is entered, ask Zach why that is and if they have all temperature data somewhere so an average could be taken.
+
+```{r bethel test fishery}
+#original file from Ben that was formatted better, but missing recent years
+# bethel_tf <- read_excel("S:/Stream Temperature Data/ADFG_AYK files/Bethel_Test_Fish_Template.xlsx")
+# 
+# bethel_tf <- bethel_tf %>% 
+#   mutate(sampleDate = as.Date(obsDateTime, format = "%m/%d/%Y"),
+#          SiteID = "adfg_Bethel_Test_Fishery") %>% 
+#   select(SiteID, sampleDate, meanDT = obsTemperature)
+
+#use this file since it goes through 2021
+bethel_tf <- read_excel("S:/Stream Temperature Data/ADFG_AYK files/Bethel Test Fishery_1984-2021 (v9.30.2021).xlsx",
+                        sheet = "Temperature Historical", range = "A4:AM96")
+
+bethel_tf <- bethel_tf %>% 
+  mutate(day = substr(as.character(Date), 6, 11)) %>% 
+  pivot_longer(cols = `1984`:`2021`, names_to = "year", values_to = "meanDT") %>% 
+  mutate(sampleDate = as.Date(paste(year, day, sep = "-")),
+         SiteID = "adfg_Bethel_Test_Fishery") %>% 
+  filter(!is.na(meanDT)) %>% 
+  select(SiteID, sampleDate, meanDT)
+
+bethel_tf %>% 
+  mutate(day = format(sampleDate, "%m-%d"),
+         year = year(sampleDate)) %>%
+  ggplot(aes(x = as.Date(day, format = "%m-%d"), y = meanDT, color = as.factor(year))) +
+  geom_line() 
+
+#monthly averages over time
+bethel_tf %>% 
+  mutate(month = month(sampleDate),
+         year = year(sampleDate)) %>% 
+  group_by(month, year) %>% 
+  summarize(mon_mn = mean(meanDT)) %>% 
+  ggplot(aes(x = year, y = mon_mn, color = as.factor(month))) +
+  geom_line()
+```
+
+The files for each year are formatted differently so read in SB and NB by year, format, and combine.
+
+```{r kalskag fish wheel}
+
+kalskag_05 <- list.files("S:/Stream Temperature Data/ADFG_AYK files/Kalskag Fishwheel/2005", full.names = TRUE) %>% 
+  map_df(., function(x) read_excel(x) %>% mutate(file_name = basename(x))) %>% 
+  mutate(sampleDate = as.Date(Date),
+         sampleTime = substr(as.character(Time), 12, 16),
+         dt = as.POSIXct(paste0(sampleDate, sampleTime), format = "%Y-%m-%d%H:%M"),
+         Temperature = case_when(!is.na(`Temperature (*C)`) ~ `Temperature (*C)`,
+                                 TRUE ~ `Temperature`),
+         SiteID = "adfg_Kalskag_Fish_Wheel") %>% 
+  select(SiteID, file_name, sampleDate, dt, Temperature)
+
+#had to open and resave as xlsx workbooks.
+kalskag_06 <- list.files("S:/Stream Temperature Data/ADFG_AYK files/Kalskag Fishwheel/2006", full.names = TRUE, pattern = "xlsx") %>% 
+  map_df(., function(x) read_excel(x) %>% mutate(file_name = basename(x))) %>% 
+  mutate(dt = as.POSIXct(substr(`Date/Time`, 1, 14), format = "%m/%d/%y %H:%M"),
+         sampleDate = as.Date(dt),
+         Temperature = `Temperature (*C)`,
+         SiteID = "adfg_Kalskag_Fish_Wheel") %>% 
+  select(SiteID, file_name, sampleDate, dt, Temperature)
+  
+kalskag_08 <- list.files("S:/Stream Temperature Data/ADFG_AYK files/Kalskag Fishwheel/2008", full.names = TRUE)[2:3] %>% 
+  map_df(., function(x) read_excel(x, sheet = 2) %>% mutate(file_name = basename(x))) %>% 
+  mutate(dt = as.POSIXct(substr(`Date/Time`, 1, 14), format = "%m/%d/%y %H:%M"),
+         sampleDate = as.Date(dt),
+         Temperature = `Temperature (*C)`,
+         SiteID = "adfg_Kalskag_Fish_Wheel") %>% 
+  select(SiteID, file_name, sampleDate, dt, Temperature)
+
+kalskag_09 <- list.files("S:/Stream Temperature Data/ADFG_AYK files/Kalskag Fishwheel/2009", full.names = TRUE)[2:3] %>% 
+  map_df(., function(x) read_excel(x, sheet = 2, skip = 1) %>% mutate(file_name = basename(x))) %>% 
+  mutate(dt = `Time, GMT-08:00`,
+         sampleDate = as.Date(dt),
+         Temperature = case_when(!is.na(`Temp, °C()`) ~ `Temp, °C()`,
+                                 TRUE ~ `Temp, °C`),
+         SiteID = "adfg_Kalskag_Fish_Wheel") %>% 
+  select(SiteID, file_name, sampleDate, dt, Temperature)
+
+kalskag_10 <- list.files("S:/Stream Temperature Data/ADFG_AYK files/Kalskag Fishwheel/2010", full.names = TRUE) %>% 
+  map_df(., function(x) read_excel(x, sheet = 1, skip = 1) %>% mutate(file_name = basename(x))) %>% 
+  mutate(dt = `Time, GMT-08:00`,
+         sampleDate = as.Date(dt),
+         Temperature = `Temp, °C()`,
+         SiteID = "adfg_Kalskag_Fish_Wheel") %>% 
+  select(SiteID, file_name, sampleDate, dt, Temperature)
+
+kalskag_11 <- list.files("S:/Stream Temperature Data/ADFG_AYK files/Kalskag Fishwheel/2011", full.names = TRUE) %>% 
+  map_df(., function(x) read_excel(x, sheet = 1, skip = 1) %>% mutate(file_name = basename(x))) %>% 
+  mutate(dt = `Date Time, GMT-08:00`,
+         sampleDate = as.Date(dt),
+         Temperature = `Temp, °C`,
+         SiteID = "adfg_Kalskag_Fish_Wheel") %>% 
+  select(SiteID, file_name, sampleDate, dt, Temperature)
+
+#no raw data for RB, all dailies, just go with LB so can QA.
+kalskag_12 <- list.files("S:/Stream Temperature Data/ADFG_AYK files/Kalskag Fishwheel/2012", full.names = TRUE)[1] %>% 
+  map_df(., function(x) read_excel(x, sheet = 1, skip = 1) %>% mutate(file_name = basename(x))) %>% 
+  mutate(dt = as.POSIXct(paste0(Date, substr(`Time, GMT-08:00`, 1, 5)), format = "%m/%d/%y%H:%M"),
+         sampleDate = as.Date(dt),
+         Temperature = (as.numeric(`Temp, °F`) - 32)*5/9,
+         SiteID = "adfg_Kalskag_Fish_Wheel") %>% 
+  select(SiteID, file_name, sampleDate, dt, Temperature)
+
+kalskag_dat <- bind_rows(kalskag_05, kalskag_06, kalskag_08, kalskag_09, kalskag_10, kalskag_11, kalskag_12) %>% 
+  mutate(logger = case_when(grepl("SB|LB|Left", file_name) ~ "Left Bank",
+                            TRUE ~ "Right Bank")) %>% 
+  filter(!is.na(Temperature))
+
+```
+
+Add logger information (left or right bank) and plot to QA temperatures. Added all dates for removal to kalskag_qa csv file. Mostly temps bad right at beginning and then again for long periods at end. 
+
+```{r kalskag data review, eval = FALSE}
+
+p1 <- kalskag_dat %>% 
+  filter(logger == "Left Bank") %>% 
+  complete(sampleDate = seq(min(sampleDate), max(sampleDate), by = 1)) %>%
+  filter(month(sampleDate) %in% 5:9) %>% 
+  group_by(sampleDate) %>% 
+  summarize(meanDT = mean(Temperature),
+            maxDT = max(Temperature),
+            minDT = min(Temperature)) %>% 
+  mutate(day = format(sampleDate, "%m-%d")) %>% 
+  ggplot(aes(x = as.Date(day, format = "%m-%d"))) +
+  geom_line(aes(y = meanDT)) +
+  geom_line(aes(y = maxDT), color = "red") +
+  geom_line(aes(y = minDT), color = "blue") +
+  facet_wrap(~year(sampleDate)) +
+  labs(title = "RB")
+  
+ggplotly(p1)  
+  
+```
+
+Read in dates for removal. Everything looks good after that. RB is slightly warmer than the LB, but LB has more years of data.
+
+```{r remove air temps kalskag}
+
+kalskag_drop_dates <- read_csv("kalskag_qa.csv")
+
+#expand dates
+kalskag_drop_dates <- kalskag_drop_dates %>% 
+  mutate(start_date = as.Date(start_date, format = "%m/%d/%Y"),
+         end_date = as.Date(end_date, format = "%m/%d/%Y")) %>% 
+  rowwise() %>%
+  transmute(logger,
+            sampleDate = list(seq(start_date, end_date, by = "day"))) %>%
+  unnest(sampleDate) %>% 
+  mutate(remove = 1)
+
+kalskag_dat2 <- kalskag_dat %>%
+  left_join(kalskag_drop_dates) %>% 
+  filter(is.na(remove)) %>% 
+  select(-remove)
+  
+kalskag_dat2 %>% 
+  filter(month(sampleDate) %in% 5:9) %>% 
+  group_by(sampleDate, logger) %>% 
+  summarize(meanDT = mean(Temperature),
+            maxDT = max(Temperature),
+            minDT = min(Temperature)) %>% 
+  mutate(day = format(sampleDate, "%m-%d")) %>% 
+  ggplot(aes(x = as.Date(day, format = "%m-%d"))) +
+  geom_line(aes(y = meanDT)) +
+  geom_line(aes(y = maxDT), color = "red") +
+  geom_line(aes(y = minDT), color = "blue") +
+  facet_grid(vars(year(sampleDate)), vars(logger)) 
+
+
+kalskag_dat2 %>% 
+  filter(month(sampleDate) %in% 6:9) %>% 
+  group_by(sampleDate, logger) %>% 
+  summarize(meanDT = mean(Temperature)) %>% 
+  mutate(day = format(sampleDate, "%m-%d")) %>% 
+  ggplot(aes(x = as.Date(day, format = "%m-%d"))) +
+  geom_line(aes(y = meanDT, color = logger)) +
+  facet_wrap(~year(sampleDate)) 
+
+```
+
+Create a file of dailies for Kalskag.
+
+```{r kalskag dailies}
+
+kalskag_intervals <- kalskag_dat2 %>% 
+  count(SiteID, logger, year = year(sampleDate), sampleDate, name = "count_perday") %>% 
+  count(SiteID, logger, year, count_perday, name = "count_peryear") %>%
+  arrange(SiteID, logger, year, count_perday) %>% 
+  filter(count_peryear > 10) 
+
+
+kalskag_daily <- left_join(kalskag_dat2 %>% mutate(year = year(sampleDate)), 
+                           kalskag_intervals %>% select(-count_peryear)) %>% 
+  group_by(SiteID, sampleDate) %>% 
+  mutate(day_ct = n(),
+         day_per = day_ct/count_perday) %>% 
+  filter(day_per >= 0.9) %>%  #ensures that all 6/6 measurements needed for earlier loggers
+  summarize(meanDT = mean(Temperature),
+            maxDT = max(Temperature),
+            minDT = min(Temperature)) 
+
+#complete days filter removed 3 days
+# 697-694 = 3 
+
+kalskag_daily %>% summary() #still lots of bad data outside the QA window (May-September). Make sure to remove for modeling.
+kalskag_daily %>% filter(month(sampleDate) %in% 5:9, meanDT > 20)
+```
+
+Create one data file for mainstem Kuskokwim sites
+
+```{r combine kusko data files}
+kusko_sonar
+bethel_tf
+kalskag_daily
+
+kusko_dat <- bind_rows(kusko_sonar, bethel_tf, kalskag_daily)
+
+```
+
+
+Bethel test fishery lat/long in Ben's sheet. Need locations for Kalskag and Sonar. Emailed Zach 3/31/22.
+
+```{r kusko md}
+kusko_md <- tibble(SiteID = c("adfg_Kuskokwim_Sonar", "adfg_Bethel_Test_Fishery",
+                              "adfg_Kalskag_Fish_Wheel"),
+                   Agency_ID = c("Kuskokwim Sonar", "Bethel Test Fishery", "Kalskag Fish Wheel"),
+                   Waterbody_name = rep("Kuskokwim River", 3),
+                   SourceName = "ADFG",
+                   Latitude = case_when(grepl("Sonar", SiteID) ~ 60 + 48.0667/60,
+                                        grepl("Test", SiteID) ~ 60.776353,
+                                        grepl("Fish_Wheel", SiteID) ~ 61 + 33.045/60),
+                   Longitude = case_when(grepl("Sonar", SiteID) ~ -162-33.1667/60,
+                                        grepl("Test", SiteID) ~ -161.661062,
+                                        grepl("Fish_Wheel", SiteID) ~ -160 - 11.372/60),
+                   Parameter = "Temperature")
+
+```
+
+
+
+## Norton Sound
+
+Kwiniuk River - 2012 to 2020 data. 2012 and 2015 are in F, convert after reading in. 2018 was exported incorrectly, read into hoboware and exported new file 2018_0.
+
+```{r}
+kwiniuk_dat <- list.files("S:\\Stream Temperature Data\\ADFG_AYK files\\Norton Sound\\Kwiniuk\\Tower\\Logger - HOBO", 
+                      pattern = ".csv", full.names = TRUE)[-7] %>%   
+  map_df(., function(x) read_csv(x, skip = 2, col_names = FALSE) %>% mutate(file_name = basename(x))) %>% 
+  mutate(dt = parse_date_time(X2, orders = "mdy HMS p"),
+         sampleDate = as.Date(dt),
+         Temperature = case_when(grepl("2012|2015", file_name) ~ (X3-32)*5/9,
+                                 TRUE ~ X3),
+         SiteID = "adfg_Kwiniuk") %>% 
+  select(SiteID, file_name, sampleDate, dt, Temperature) %>% 
+  filter(!is.na(Temperature))
+
+summary(kwiniuk_dat)
+
+```
+
+
+```{r kwiniuk data review, eval = FALSE}
+
+p1 <- kwiniuk_dat %>% 
+  complete(sampleDate = seq(min(sampleDate), max(sampleDate), by = 1)) %>%
+  filter(month(sampleDate) %in% 5:12) %>% 
+  group_by(sampleDate) %>% 
+  summarize(meanDT = mean(Temperature),
+            maxDT = max(Temperature),
+            minDT = min(Temperature)) %>% 
+  mutate(day = format(sampleDate, "%m-%d")) %>% 
+  ggplot(aes(x = as.Date(day, format = "%m-%d"))) +
+  geom_line(aes(y = meanDT)) +
+  geom_line(aes(y = maxDT), color = "red") +
+  geom_line(aes(y = minDT), color = "blue") +
+  facet_wrap(~year(sampleDate)) 
+  
+ggplotly(p1)  
+
+
+```
+
+
+
+```{r remove air temps kwiniuk}
+
+kwiniuk_drop_dates <- read_csv("kwiniuk_qa.csv")
+
+#expand dates
+kwiniuk_drop_dates <- kwiniuk_drop_dates %>% 
+  mutate(start_date = as.Date(start_date, format = "%m/%d/%Y"),
+         end_date = as.Date(end_date, format = "%m/%d/%Y")) %>% 
+  rowwise() %>%
+  transmute(sampleDate = list(seq(start_date, end_date, by = "day"))) %>%
+  unnest(sampleDate) %>% 
+  mutate(remove = 1)
+
+kwiniuk_dat2 <- kwiniuk_dat %>%
+  left_join(kwiniuk_drop_dates) %>% 
+  filter(is.na(remove)) %>% 
+  select(-remove)
+  
+kwiniuk_dat2 %>% 
+  filter(month(sampleDate) %in% 6:9) %>% 
+  group_by(sampleDate) %>% 
+  summarize(meanDT = mean(Temperature),
+            maxDT = max(Temperature),
+            minDT = min(Temperature)) %>% 
+  mutate(day = format(sampleDate, "%m-%d")) %>% 
+  ggplot(aes(x = as.Date(day, format = "%m-%d"))) +
+  geom_line(aes(y = meanDT)) +
+  geom_line(aes(y = maxDT), color = "red") +
+  geom_line(aes(y = minDT), color = "blue") +
+  facet_wrap(~year(sampleDate)) 
+
+
+
+```
+
+Create a file of dailies for Kwiniuk.
+
+```{r kwiniuk dailies}
+
+kwiniuk_intervals <- kwiniuk_dat2 %>% 
+  count(SiteID, year = year(sampleDate), sampleDate, name = "count_perday") %>% 
+  count(SiteID, year, count_perday, name = "count_peryear") %>%
+  arrange(SiteID, year, count_perday) %>% 
+  filter(count_peryear > 10) 
+
+kwiniuk_daily <- left_join(kwiniuk_dat2 %>% mutate(year = year(sampleDate)), 
+                           kwiniuk_intervals %>% select(-count_peryear)) %>% 
+  group_by(SiteID, sampleDate) %>% 
+  mutate(day_ct = n(),
+         day_per = day_ct/count_perday) %>% 
+  filter(day_per >= 0.9) %>%  #basically all 4/4 per day must be there
+  summarize(meanDT = mean(Temperature),
+            maxDT = max(Temperature),
+            minDT = min(Temperature)) 
+
+#complete days filter removed 2 days
+# 1088-1086 = 2 
+
+kwiniuk_daily %>% summary()
+
+```
+
+
+For Niukluk River, there is ADFG data from 2011/2012 and Native Village of Council data from 2017 on. The data from Susan Gray is not qaed and may have some problems (shuttle dates/times) so it would be best to use the USGS data if we keep this site in the analysis. For now, don't try to bring in and QA all the Niukluk river data from ADFG/NVC.
+
+For metadata, got the lat/long from our data inventory sheet since both loggers were associated with counting towers. (note that our data sheet says Niukluk is a weir, but adfg folder says tower, not sure which is right.)
+
+```{r norton sound md}
+# norton_md <- tibble(SiteID = c("adfg_Kwiniuk", "adfg_Niukluk"),
+#                    Agency_ID = c("Kwiniuk Counting Tower", "Niukluk Counting Tower"),
+#                    Waterbody_name = c("Kwiniuk River", "Niukluk River"),
+#                    SourceName = "ADFG",	
+#                    Latitude = c(64.7206, 64.82097),
+#                    Longitude = c(-162.016733, -163.49272),
+#                    Parameter = "Temperature")
+
+norton_md <- tibble(SiteID = c("adfg_Kwiniuk"),
+                   Agency_ID = c("Kwiniuk Counting Tower"),
+                   Waterbody_name = c("Kwiniuk River"),
+                   SourceName = "ADFG",	
+                   Latitude = c(64.7206),
+                   Longitude = c(-162.016733),
+                   Parameter = "Temperature")
+
+
+norton_md
+```
+
+
+
+# Combine data and save
+
+
+
+adfg
+kusko
+norton
+
+
+
+```{r all adfg data and md}
+bind_rows(adfg_md, kusko_md, norton_md) %>% 
+  saveRDS("data/final_data/adfg_md.rds")
+
+bind_rows(adfg_daily, kusko_dat, kwiniuk_daily) %>% 
+  saveRDS("data/final_data/adfg_dat.rds")
+
+
+
+
+```
+

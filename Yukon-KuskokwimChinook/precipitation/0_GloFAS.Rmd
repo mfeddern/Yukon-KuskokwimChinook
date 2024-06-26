@@ -1,0 +1,210 @@
+---
+title: "0_GloFAS"
+output: html_document
+date: "2022-09-22"
+---
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(sf)
+library(lubridate)
+library(tidyverse)
+library(googlesheets4)
+library(corrplot)
+library(gridExtra)
+library(GGally)
+
+```
+
+
+
+3. Read in GRFR file created by Josh and extract the modeled flow for all 40 years for each watershed outlet.
+4. Create annual metrics of maximum fall streamflow for all 40 years and all sites. 
+5. For genetic groups, compare peak streamflow time series for major spawning areas to see if one is representative or if some sort of average should be used. 
+
+
+```{r read in glofas for 49 sites}
+
+glofas <- read_csv("W:/Github/spatial/glofas_output/glofas_discharge.csv")
+
+str(glofas)
+
+#compare to glofas output that Jon originally provided for ~20 sites that snapped correctly
+glo1 <- read_csv("data/glofas_discharge.csv")
+names(glo1) <- word(names(glo1), 1)
+
+names(glo1) %in% names(glofas)
+nrow(glo1) == nrow(glofas)
+
+(glo1$Aniak == glofas$Aniak) %>% sum()
+(glo1$Takhini == glofas$Takhini) %>% sum()
+(glo1$Chena == glofas$Chena) %>% sum()
+(glo1$Salcha == glofas$Salcha) %>% sum()
+(glo1$Tozitna == glofas$Tozitna) %>% sum()
+```
+```{r max fall precip metric}
+
+glofas_maxfallq <- glofas %>% 
+  filter(month(date) %in% 8:11) %>% 
+  group_by(location_short, Year = year(date)) %>% 
+  summarize(max_fall_q = max(GLOFAS))
+
+
+```
+
+
+# Compare Data to Analysis Sites and Select appropriate spawning areas for genetic substocks
+
+Check concordance among major spawning areas in genetic subgroups of Yukon. Read in google drive file that Megan started with site names and where I added the major spawning areas for the Lower and Middle Yukon and also the Canadian Yukon genetic substocks. 
+
+The sites data frame should be expanded so we have all site names for analysis (Population), but also all of the major spawning areas that go to the genetic substocks. There are 4 sites that are included as separate populations (Chena, Salcha, Gisasa, and EF Andreafsky), but are also included as major spawning areas in the Lower and Middle mainstem. 
+
+```{r read google sheet of sites}
+sites <- read_sheet("https://docs.google.com/spreadsheets/d/1uS7iIqob7lP5zv94FCtnjfDlQgjBr-D1LCq4RGuLcbI/edit#gid=0",
+                    na = "NA")
+
+sites <- sites %>% 
+  separate_rows(Major_Spawning_Areas, sep = ",") %>% 
+  mutate(Major_Spawning_Areas = gsub(" ", "", Major_Spawning_Areas))
+
+sites %>% distinct(Major_Spawning_Areas) %>% arrange(Major_Spawning_Areas)
+sites %>% filter(Region == "Yukon (US)") %>% arrange(Major_Spawning_Areas)
+
+glofas2 <- left_join(sites, glofas_maxfallq, by = c("Major_Spawning_Areas" = "location_short")) 
+
+genetic_groups <- sites %>% filter(Region == "Yukon (CA)" | Region == "Yukon (US)" & 
+                                     grepl("Mainstem", Population)) %>% 
+  distinct(Population, Region)
+
+left_join(genetic_groups %>% filter(Region == "Yukon (CA)"), sites)
+
+```
+
+Note that in Brown et al., Table 4, they provide quantitative information on how they determined the 34 major spawning areas that can be used to assess if one might be more important than another. It is also possible to compare the number of major + minor spawning areas in each watershed that lies within a genetic group.
+
+* For Carmacks, Little Salmon and Big Salmon are both major spawning areas, but Big Salmon has higher numbers based on mean aerial survey counts from decades of data. And Big Salmon has 1 major + 4 minor spawning areas, whereas little salmon has 1 major and 2 minor.
+* For middle mainstem, the Yukon mainstem makes up about 5% of the total population so would definitely be bigger than Tatchun Creek.
+* For Pelly, all three major spawning areas have different methods of assessment. Blind Creek is really small, probably Ross or South MacMillan Rivers would be better; Ross river has 1 major + 2 minor areas whereas S MacMillon has 1 major and 1 minor area.
+* For Teslin, Teslin includes the entire watershed with ~ 15 minor spawning areas, not including the Nisutlin and Wolf tributaries. Wolf has 1 minor area and Nisutlin has 2 minor areas. Teslin is estimated to include ~ 5% of the entire population.
+
+Recommend using Big Salmon, Yukon Mainstem, Ross, and Teslin as the major spawning areas within each genetic substock.
+
+
+
+Explore dynamics of fall peak flow for major spawning areas within Canadian genetic substocks. For Lower mainstem, Stewart, Upper lakes and mainstem, and White-Donjek, there is only one major spawning area within the larger substock. Evaluate those with more than one major spawning area. Note that the two sites in the middle mainstem are dramatically different in size: mainstem Yukon and Tatchun Creek. 
+
+```{r time series of max fall q by canadian spawning areas}
+glofas2 %>%  
+  filter(Population %in% c("Carmacks", "MidMain", "Pelly", "Teslin")) %>% 
+  ggplot(aes(x = Year, y = max_fall_q, color = Major_Spawning_Areas)) +
+  geom_line() +
+  scale_y_log10() +
+  facet_wrap(~Population, scales = "free_y")
+```
+
+
+```{r pairplots of spawning areas within populations}
+list1 <- glofas2 %>%
+  filter(Population %in% c("Carmacks", "MidMain", "Pelly", "Teslin")) %>%
+  group_by(Population) %>%
+  group_split() %>%
+  lapply(., function(x) x %>%
+           select(Population, Year, Major_Spawning_Areas, max_fall_q) %>%
+           pivot_wider(names_from = Major_Spawning_Areas, values_from = max_fall_q) %>%
+           select(where(~!all(is.na(.x)))))
+
+#not as good, just raw correlations
+lapply(list1, function(x) x %>%
+                  select(-Population, -Year) %>%
+                  cor(.) %>%
+                  corrplot.mixed(.))
+
+#data + correlations
+pdf("output/glofasFallQ_pairs_CanYukon.pdf")
+lapply(list1, function(x) {
+  title = unique(x$Population)
+  x %>% 
+    select(-Population, -Year) %>% 
+    ggpairs(title = title) }) 
+dev.off()
+
+```
+
+
+
+```{r correlation matrix of Canadian Yukon spawning areas}
+groups = glofas2 %>% 
+  filter(Population %in% c("Carmacks", "MidMain", "Pelly", "Teslin")) %>% 
+  distinct(Major_Spawning_Areas) %>% 
+  pull(Major_Spawning_Areas)
+
+cor_mat <- sapply(1:length(groups), function(i)
+    sapply(1:length(groups), function(j)
+        cor(x = grfr3$max_fall_q[grfr3$Major_Spawning_Areas == groups[i]], 
+            y = grfr3$max_fall_q[grfr3$Major_Spawning_Areas == groups[j]])))
+
+rownames(cor_mat) <- groups
+colnames(cor_mat) <- groups
+
+cor_mat
+```
+
+We also wanted to examine the concordance/heterogeneity of fall streamflow when using major genetic subgroups in the US mainstem Yukon.
+
+```{r time series of max fall q in lower and middle yukon}
+
+glofas2 %>%  
+  filter(Population %in% c("MainstemLower", "MainstemMid")) %>% 
+  ggplot(aes(x = Year, y = max_fall_q, color = Major_Spawning_Areas)) +
+  geom_line() +
+  # scale_y_log10() +
+  facet_wrap(~Population, scales = "free_y", ncol = 1)
+
+#which years had the highest fall peakflow in the 40 year dataset?
+glofas2 %>% 
+  group_by(Major_Spawning_Areas) %>% 
+  mutate(maxQ = max(max_fall_q)) %>% 
+  filter(max_fall_q == maxQ) %>% 
+  ungroup() %>% 
+  count(Year) %>% 
+  arrange(desc(n))
+```
+
+```{r pairplots of max fall q for lower and middle yukon}
+list2 <- glofas2 %>% 
+  filter(Population %in% c("MainstemLower", "MainstemMid")) %>% 
+  group_by(Population) %>% 
+  group_split() %>% 
+  lapply(., function(x) x %>% 
+           select(Population, Year, Major_Spawning_Areas, max_fall_q) %>% 
+           pivot_wider(names_from = Major_Spawning_Areas, values_from = max_fall_q) %>% 
+           select(where(~!all(is.na(.x)))))
+
+#data + correlations
+pdf("output/glofasFallQ_pairs_Yukon.pdf")
+lapply(list2, function(x) {
+  title = unique(x$Population)
+  x %>% 
+    select(-Population, -Year) %>% 
+    ggpairs(title = title) }) 
+dev.off()
+
+```
+
+
+
+# Final dataset of modeled streamflow for all analysis sites
+
+Share above data with group and decide on a major spawning area to use for each genetic substock in Canada.
+
+```{r}
+glofas2 %>% distinct(Population)
+glofas2 %>% distinct(Major_Spawning_Areas)
+
+saveRDS(glofas2, "data/final_data/glofas_streamflow.rds")
+
+```
+

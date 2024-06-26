@@ -1,0 +1,2580 @@
+---
+title: "2_temperature models"
+output: html_document
+date: "2022-10-05"
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(ggpubr)
+library(tidyverse)
+library(lubridate)
+library(zoo)
+library(gridExtra)
+library(googlesheets4)
+library(broom)
+library(TSA)
+library(equatiomatic)
+library(gridExtra)
+library(grid)
+library(gbm)
+library(sf)
+library(modelr)
+library(patchwork)
+```
+
+There are 52 sites we are using for the Chinook productivity analysis. They are a combination of escapement monitoring locations and major spawning areas. The major spawning areas will be matched to the genetic substocks in the Canadian Yukon. We may also use them for the middle and lower yukon and kuskokwim brood tables. Start by linking temperature site codes to populations in the Coviariate sites google sheet. Temperature sites may be different for different life stages (e.g. migration and spawning).
+
+
+# Temperature data
+
+Read in final data files with temperature data for Chinook sites. Align with the escapement sites and/or major spawning populations from Megan's google sheet.
+
+Some sites have multiple datasets that need to be combined into one SiteID for merging temperature data into one time series that correctly links to an escapement site or major spawning area. Need to select a lat/long from one of the sites so that I can use the md data frame for extracting air temperatures (see below).
+
+* USGS and OSM datasets for Anvik River, < 2 km apart
+* Two datasets from Al for Blind Creek, < 1 km apart
+* Two datasets from Al for Teslin River, at and above Hootalinqua, which is historic town at confluence with Yukon
+* Two datasets for Yukon mainstem above the Klondike highway from Al, combine them to get 5 years and use as the spawning site for the middle mainstem major spawning area/genetic substock
+
+Note: fixed some bad data in Eagle and Kalskag that I missed by a day. Also, it would be better to have Bethel maximums from the BTF and Aniak maximums from that TF. Emailed Zach for those time series. 
+
+```{r read in temp data and combine sites}
+
+#load temperature data and md files, 'complete' dates here for plotting
+temp_md <- readRDS("data/final_data/combined_data/temp_md.rds")
+temp_dat <- readRDS("data/final_data/combined_data/temp_dat.rds")
+
+temp_md <- temp_md %>%
+  bind_rows(tibble(SiteID = "usgs-osm_Anvik", start_year = 2002, end_year = 2019, total_years = 12, Region = "Yukon (US)",
+                   Waterbody_name = "Anvik River", Parameter = "Temperature", SourceName = "USGS and OSM",
+                   Latitude = 62.788721, Longitude = -160.699352),
+            tibble(SiteID = "avf_Blind", start_year = 2011, end_year = 2020, total_years = 10, Region = "Yukon (Canada)",
+                   Waterbody_name = "Blind Creek", Parameter = "Temperature", SourceName = "AlvonF",
+                   Latitude = 62.191867, Longitude = -133.180900),
+            tibble(SiteID = "avf_Teslin", start_year = 2011, end_year = 2019, total_years = 9, Region = "Yukon (Canada)",
+                   Waterbody_name = "Teslin River", Parameter = "Temperature", SourceName = "AlvonF",
+                   Latitude = 61.567450, Longitude = -134.899150),
+            tibble(SiteID = "avf_Yukon_mm", start_year = 2016, end_year = 2020, total_years = 5, Region = "Yukon (Canada)",
+                   Waterbody_name = "Yukon River", Parameter = "Temperature", SourceName = "AlvonF",
+                   Latitude = 62.094733, Longitude = -136.271250))
+
+temp_dat <- temp_dat %>% 
+  mutate(SiteID = case_when(SiteID %in% c("OSM_Anvik", "usgs_15565400") ~ "usgs-osm_Anvik",
+                            SiteID %in% c("avf_09BC002", "avf_09BC003") ~ "avf_Blind",
+                            SiteID %in% c("avf_09AF001", "avf_09AF002") ~ "avf_Teslin",
+                            SiteID %in% c("avf_09AH003", "avf_09AH004") ~ "avf_Yukon_mm",
+                            TRUE ~ SiteID))
+
+temp_dat %>% distinct(SiteID)
+
+temp_md
+```
+
+
+
+Enter temperature SiteIDs to the google sheet "Covariate sites" for each life stage. Notes on site selection are below when there were multiple sites in a watershed. 
+
+* for Anvik, Blind, Teslin, and Yukon middle mainstem; combined datasets across adjacent sites to create a longer time series (see above)
+* for chena, selected longer osm time series and much lower in watershed than usgs site
+* for salcha, osm has longer time series than usgs
+* for mcquesten, selected longest time series
+* for tatchun, selected shorter time series, but still 5 years and on river rather than right at lake outlet, which would likely be very hard to model with air temperatures
+* for unalakleet, selected osm site bc lower in watershed and longer time series
+* for Klondike, use Al's dataset since much longer than adfg
+* for Yukon migration, selected Yukon at Pilot station, rapids camp, and eagle. I'm assuming we will rely on the Pilot Station site for high thermal exposures based on Vanesssa's and Katie's results, but it will be interesting to assess the magnitude and duration of warm temperatures at the upper river sites as well (both from empirical data and models).
+* for Kuskokwim migration, there are continuous temperatures from the sonar and kalskag, but they are pretty short. Also a much longer time series from the test fishery that possibly could be used/modeled with some creativity.
+
+Read in google drive file that Megan started with site names and where I added the major spawning areas for the Lower and Middle Yukon and also the Canadian Yukon genetic substocks. First assess whether we have stream temperature data for more than one major spawning area in the genetic substocks. For modeled streamflow, made some suggestions to select the spawning area that supported the highest return for each genetic substock. We may not have that ability for stream temperature because we may not have data for any spawning area in that genetic substock or only from one that is not the dominant one.
+
+* Carmacks - only have data from Little Salmon, smaller return than Big Salmon
+* LwrMain - Klondike has good dataset from north fork.
+* MidMain - have data from both yukon mainstem and tatchun creek, mainstem is 5% of total pop
+* Pelly - only have data from Blind Creek, both Ross and Macmillan are much bigger but no data. Added Pelly river site where Al has 9 years of data, but note that may not represent actual spawning habitat.
+* Stewart - McQuesten has data
+* Teslin - data for Teslin R which is 5% of total pop
+* UprLksMain - data for Takhini
+* White-Donjek - no data
+
+
+
+
+The sites data frame should be expanded so we have all site names for analysis (Population), but also all of the major spawning areas that go to the genetic substocks. There are 4 sites that are included as separate populations (Chena, Salcha, Gisasa, and EF Andreafsky), but are also included as major spawning areas in the Lower and Middle mainstem. 
+
+```{r read google sheet of sites}
+gs_sites <- read_sheet("https://docs.google.com/spreadsheets/d/1uS7iIqob7lP5zv94FCtnjfDlQgjBr-D1LCq4RGuLcbI/edit#gid=0",
+                    na = "NA")
+
+# sites <- sites %>% 
+#   separate_rows(Major_Spawning_Areas, sep = ",") %>% 
+#   mutate(Major_Spawning_Areas = gsub(" ", "", Major_Spawning_Areas))
+
+temp_site_selection <- c(gs_sites %>% 
+                           separate_rows(Temperature_spawning_rearing, sep = ", ") %>% 
+                           distinct(Temperature_spawning_rearing) %>%
+                           filter(!is.na(Temperature_spawning_rearing)) %>% 
+                           pull(Temperature_spawning_rearing),
+                         gs_sites %>% 
+                           separate_rows(Temperature_migration, sep = ", ") %>% 
+                           distinct(Temperature_migration) %>% 
+                           filter(!is.na(Temperature_migration)) %>% 
+                           pull(Temperature_migration)) 
+
+
+#check that sites not selected were not missed on accident 
+# these are mostly USGS sites that aren't used by Chinook
+# some are chinook sites that were combined to make a single time series -- see above
+# others are chinook sites where we used a different location with better data -- 
+# longer time series or better location, see above
+anti_join(temp_md, tibble(SiteID = temp_site_selection)) %>% 
+  select(SiteID, Waterbody_name, total_years)
+
+```
+
+Check that all 33 sites have at least 3 summers of reasonable daily statistics (80% of days in JJA). It may be some of the migration corridor sites in the Kuskokwim are too short. (See ADFG report on validation of BTF data against logger arrays.) 
+
+```{r stream temp data completeness}
+temp_dat %>% 
+  filter(SiteID %in% temp_site_selection, month(sampleDate) %in% 6:8) %>% 
+  count(SiteID, sampleYear) %>% 
+  mutate(complete = n > 73) %>% 
+  count(SiteID, complete) %>%
+  pivot_wider(names_from = complete, names_prefix = "complete_",  values_from = n) %>%
+  arrange(complete_TRUE) 
+
+```
+
+Filter on temperature sites in temp_md and save as an rds. Import to the spatial repo for extracting air temperatures. Read in daymet covariates and merge with stream temperatures in filtered temperature data frame.
+
+Also save as a csv so can get additional covariates from Josh: 
+
+* calculate watersheds and ask Josh to get DAYMET mean April 1 swe by year to test in models.
+* intersect with MERIT-BASIN RCAs and pass to Josh to get MODIS LST as a comparison in the stream temp models.
+* also worked through steps to get glofas discharge in spatial repo. Started with site locations and watersheds, shifted and/or edited watershed area for 9 sites to get best representation of flow using glofas grid. 
+
+```{r add daymet air temperature}
+# temp_md %>%
+#   filter(SiteID %in% temp_site_selection) %>%
+#   saveRDS(., file = "data/temp_md_33sites.rds")
+
+# temp_md <- readRDS(file = "data/temp_md_33sites.rds")
+# temp_md %>% 
+#   write_csv("data/temp_md_33sites.csv")
+
+temp_dat %>% 
+  filter(SiteID %in% temp_site_selection) %>% 
+  summarize(range(sampleYear))
+#1976-2021
+
+airTemps <- readRDS(file = "W:/Github/spatial/daymet_files/daymet_airTemps_33site.rds")
+summary(airTemps) #1980-2021
+
+#Start by creating a model data frame so join to temp_dat. Later will need the full airTemps data
+# frame to predict over.
+temp <- left_join(temp_dat %>% 
+                    filter(SiteID %in% temp_site_selection),
+                  airTemps) 
+
+temp %>% distinct(SiteID)
+temp %>% summary()
+temp %>% filter(is.na(yday)) %>% count(SiteID, sampleYear) #these are all leap years or pre 1980 for Pilot station
+
+temp <- temp %>% 
+  filter(!is.na(yday))
+
+# temp %>%
+#   saveRDS(., file = "data/daily_airwater_temps_33sites.rds")
+# temp <- readRDS(file = "data/daily_airwater_temps_33sites.rds")
+```
+
+Rolling pdf of stream temperatures by year with mean, max and min.
+
+```{r pdf of daily temps for all sites, eval = FALSE}
+sites <- temp %>% distinct(SiteID) %>% pull(SiteID)
+
+pdf("output/dailies_33sites.pdf")
+for(i in sites) {
+  dat <- temp %>% 
+    filter(SiteID %in% i) %>% 
+    complete(sampleYear, yday = 120:275) %>% 
+    filter(yday %in% 120:275)
+  p1 <- dat %>% 
+    ggplot() +
+    geom_line(aes(x = yday, y = meanDT)) +
+    geom_line(aes(x = yday, y = minDT), color = "blue") +
+    geom_line(aes(x = yday, y = maxDT), color = "red") +
+    labs(title = i) +
+    facet_wrap(~sampleYear)
+  print(p1)
+}
+
+dev.off()
+```
+
+
+Add the glofas data to the time series as well because we would expect sites with higher streamflow to generally be deeper and have more thermal inertia during high flows in spring or fall - leading to colder temperatures.
+
+Note: there are some sites with a lot of 0 discharge, esp. Sheenjek river. Since that isn't a site we are including in the productivity model, it's not that important, but a little strange that the modeled streamflow is zero for so much of the winter in such a large river.
+
+```{r add glofas mean daily discharge}
+
+glofas <- read_csv("W:/Github/spatial/glofas_output/glofas_tempSites_discharge.csv")
+summary(glofas) #1979-2022
+names(glofas)
+
+glofas_lg <- glofas %>% 
+  pivot_longer(cols = -date, names_to = "SiteID", values_to = "discharge") %>% 
+  rename(sampleDate = date)
+
+glofas %>% filter(OSM_Sheenjek == 0) %>%
+  count(year(date))
+glofas %>% filter(OSM_Sheenjek == 0) %>%
+  count(month(date))
+
+glofas_lg %>% 
+  filter(discharge == 0) %>% 
+  count(SiteID)
+
+tempq <- left_join(temp, glofas_lg)
+
+#this all makes sense. Sheenjek right between salcha and site in canada (D003), which are smaller and larger watershed areas, respectively.
+tempq %>% 
+  group_by(SiteID) %>% 
+  summarize(maxq = max(discharge),
+            meanq = mean(discharge)) %>% 
+  arrange(desc(maxq))
+```
+
+Josh also extracted daymet April 1st SWE as a mean watershed swe by year for each site.
+
+
+```{r add in april 1 swe}
+dm_swe <- read_csv("data/daymet/DAYMET_SWE_April1_1980-2018.csv") %>% 
+  rename(SiteID = name, sampleYear = year, mean_swe = mean_swe_kgm2,
+         max_swe = max_swe_kgm2)
+
+dm_swe2 <- read_csv("data/daymet/DAYMET_SWE_April1_2019-2021.csv") %>% 
+  rename(SiteID = name, sampleYear = year, mean_swe = mean_swe_kgm2,
+         max_swe = max_swe_kgm2)
+
+dm_swe %>% count(SiteID)
+
+dm_swe <- bind_rows(dm_swe, dm_swe2)
+summary(dm_swe)
+
+#no missing data
+left_join(tempq, dm_swe %>% select(SiteID, sampleYear, mean_swe, max_swe)) %>% 
+  filter(is.na(mean_swe)) %>% 
+  count(SiteID, sampleYear)
+
+temp_dat <- left_join(tempq, dm_swe %>% select(SiteID, sampleYear, mean_swe, max_swe)) 
+
+```
+
+Note: comparison between daymet and modis will be a separate exercise, could move this to a new script. Time step is different and modis not useful for productivity model because it starts so late.
+
+Finally, add in MODIS where it is available from 2003-2020. But, first need to calculate weekly values for water temp, daymet air temp, and discharge. Not sure about how the 8-day modis values are calculated yet so do this later -- e.g. first, middle, or last day.
+
+```{r add in modis lst}
+
+modis <- read_csv("data/MODIS_LST_MayToNov_2003-2020.csv") #%>% 
+  rename(SiteID = name, sampleYear = year)
+
+
+```
+
+
+Save model data frame.
+
+```{r save model data frame}
+saveRDS(temp_dat, file = paste0("data/temp_model_dataset", Sys.Date(), ".rds"))
+
+#new dataset with swe through 2021 (previously ended in 2018)
+temp_dat <- readRDS("data/temp_model_dataset2023-01-24.rds")
+
+temp_dat %>% 
+  count(is.na(mean_swe), sampleYear)
+
+temp_dat %>% distinct(SiteID)
+```
+
+# Site summaries - magnitude and timing of max temperatures
+
+Explore which sites have the highest annual maximum of daily mean temperatures and when those occur. Could also explore a 3-day moving average of mean daily temperatures and when that maximum occurs.
+
+```{r figure of max mean daily temp}
+temp_md
+
+complete_siteyears <- temp_dat %>% 
+  filter(SiteID %in% temp_site_selection, month(sampleDate) %in% 6:8) %>% 
+  count(SiteID, sampleYear) %>% 
+  filter(n > 73) 
+
+
+siteData_MxMnT <- left_join(temp_dat, temp_md %>% select(SiteID, Agency_ID, Waterbody_name)) %>% #69,986 records
+  right_join(complete_siteyears) %>% #68,656 records
+  # distinct(SiteID, Waterbody_name)
+  filter(!is.na(meanDT), month(sampleDate) %in% 5:9) %>% #get rid of one date at Eagle with missing data,
+  # also never filtered on dates so some year round data that were not QCed in this dataset.
+  group_by(SiteID, Waterbody_name, sampleYear) %>% 
+  summarize(MxMnT = max(meanDT)) %>% 
+  group_by(SiteID, Waterbody_name) %>% 
+  mutate(site_MxMnT = mean(MxMnT),
+         sitemin_MxMnT = min(MxMnT),
+         sitemax_MxMnT = max(MxMnT)) 
+
+
+siteData_MxMnT %>% 
+  ggplot() +
+  geom_point(aes(x = MxMnT, y = fct_reorder(Waterbody_name, site_MxMnT)), color = "gray") +
+  geom_point(data = . %>% filter(sampleYear == 2019), aes(x = MxMnT, y = fct_reorder(Waterbody_name, site_MxMnT)), color = "red") +
+  geom_point(aes(x = site_MxMnT, y = fct_reorder(Waterbody_name, site_MxMnT))) +
+  geom_errorbar(aes(xmin = sitemin_MxMnT, xmax = sitemax_MxMnT, 
+                    y = fct_reorder(Waterbody_name, site_MxMnT)), width = 0) +
+  theme_bw() +
+  theme(axis.title.y = element_blank()) +
+  labs(x = "Maximum Mean Daily Temperature (°C)")
+
+ggsave("output/YK max mean daily temps.jpeg")
+
+#save a copy for Megan
+saveRDS(siteData_MxMnT, "output/siteData_msmnt.rds")
+```
+
+Timing of maximum temperatures by site.
+
+```{r figure of timing of max mean daily temp}
+
+left_join(temp_dat, temp_md %>% select(SiteID, Agency_ID, Waterbody_name)) %>% #69,986 records
+  right_join(complete_siteyears) %>% #68,656 records
+  # distinct(SiteID, Waterbody_name)
+  filter(!is.na(meanDT), month(sampleDate) %in% 5:9) %>% #get rid of one date at Eagle with missing data
+  group_by(Waterbody_name, sampleYear) %>% 
+  slice_max(n = 1, order_by = meanDT, with_ties = FALSE) %>% 
+  group_by(Waterbody_name) %>% 
+  mutate(site_jdmean = mean(yday),
+         site_jd = mean(yday) %>% as.character() %>% as.Date(format = "%j") %>% format("%m-%d"),
+         sitemin_jd = min(yday) %>% as.character() %>% as.Date(format = "%j") %>% format("%m-%d"),
+         sitemax_jd = max(yday) %>% as.character() %>% as.Date(format = "%j") %>% format("%m-%d"),
+         jd_date = yday %>% as.character() %>% as.Date(format = "%j") %>% format("%m-%d")) %>%   
+  # filter(grepl("Bethel", SiteID))
+  ggplot() +
+  geom_point(aes(x = as.Date(jd_date, format = "%m-%d"), 
+                 y = fct_reorder(Waterbody_name, site_jdmean)), color = "gray") +
+  geom_point(data = . %>% filter(sampleYear == 2019),
+             aes(x = as.Date(jd_date, format = "%m-%d"), 
+                 y = fct_reorder(Waterbody_name, site_jdmean)), color = "red") +
+  geom_point(aes(x = as.Date(site_jd, format = "%m-%d"), 
+                 y = fct_reorder(Waterbody_name, site_jdmean))) +
+  geom_errorbar(aes(xmin = as.Date(sitemin_jd, format = "%m-%d"), xmax = as.Date(sitemax_jd, format = "%m-%d"), 
+                    y = fct_reorder(Waterbody_name, site_jdmean)), width = 0) +
+  theme_bw() +
+  theme(axis.title.y = element_blank()) +
+  labs(x = "Timing of Maximum Mean Daily Temperature (°C)")
+
+ggsave("output/YK timing max mean daily temps.jpeg")
+
+```
+
+Exploration of Kalskag versus Sonar on Kuskokwim.
+
+```{r}
+siteData_MxMnT %>% 
+  filter(grepl("Kalskag|Sonar", SiteID))
+```
+
+
+
+# Model information for each site
+
+Plan is to develop site specific models because we don't have good information on different hydrologic inputs among sites so we expect the air temperature slopes to vary. But, to develop the best site-specific models for comparison, we want some information about each site. It may be interesting to test a global model where sites can share information across years. Possibly they should be grouped by region as different climate modes can affect regional weather patterns quite differently across the state. 
+
+Build out a set of models for each site based on Mcnyset and Von Vliet papers:
+
+1. Both found seasonal models performed better due to hysteresis in the spring so define peak day or week for each site first and put in a data frame. 
+2. McNyset: Daily regressions by season with air temp, air temp^2 and julian day.
+3. Von Vliet: Daily nls models with lags and discharge.
+4. Weekly regressions by season with air temp and air temp^2 (best predictive accuracy in McNyset).
+5. Weekly nls models - no lags, could try discharge (original Mohseni model). 
+6. wateRtemp library with ML methods for daily stream temperatures. Maybe script up a single ML model outside of that library to have better control on settings.
+7. Nueswanger: Jason's project with Erik -- used gbm with good results.
+
+Stream temperature model issues:
+
+* we are after daily predictions to capture extreme heat events, which will inherently reduce the correlation between air and stream temperatures.
+* to address dailies, we will need time lags to account for the time that it takes for stream temperature to respond to changing air temperatures. These lags will vary at each site depending on flow and depth so site specific models could test a number of different lags and select one by AIC or we could include an interaction between watershed size (proxy for discharge) and the time lags so that some lags zero out when they aren't as important for that size system (e.g. 5-day lags for smaller streams not likely to be as important). A global ML model could test for this.
+* temperature hysteresis occurs more in the spring (rising limb of stream temperatures) when stream temperatures lag behind warming air temperatures because of coldwater inputs such as snow. One way to address this would be to include separate models or a covariate for the rising and falling limbs. We could make the midpoint dynamic based on the year and site or pick a week when temperatures tend to peak -- like late July.
+* missing data may affect our prediction accuracy as some sites have many summers of data and others are more limited. We could borrow information across sites to improve predictions, but would want to include random terms to account for the nested measurements within a site. Not entirely sure how we would include this in an ML approach -- maybe add SiteIDs as a covariate?
+* spatial and temporal autocorrelation. In any model, we can check if there is residual autocorrelation in space or time. The sites are not very closely connected in stream network space, but there could be regional differences that we could explore in a region covariate. Hopefully the time lags would account for any temporal autocorrelation.
+* other time series covariates might improve the model, such as precipitation or SWE. Precipitation could be included as a previous 5-day sum and SWE possibly as an annual covariate (e.g. May 1st SWE).
+
+Some ideas:
+
+* BRT or ANN (Deweber 2014) for ML methods. 
+* time varying coefficient model (Li 2014)
+* nonlinear daily air temperature model with discharge and time lags (Van Vliet 2011)
+
+
+
+
+
+
+
+
+Examine correlations between preferred metric, annual maximum 3-day maximum temperature, to mean weekly temperature across all sites (r = 0.95). I think this is important because it shows weekly predictions should capture the same variation as daily maximums, but won't be able to set specific daily threshold that impacts salmon productivity. Could back-calculate the daily maximums that correlate to the weekly thresholds for each site if there is an important effect size or threshold in the final model.
+
+
+correlations between max 3-day temperature and mean weekly temperature
+
+```{r max 3-day correlations}
+
+tempMets <- left_join(temp_dat, temp_md %>% select(SiteID, Region, Waterbody_name)) %>% 
+  filter(!is.na(maxDT)) %>% #just keep data for modeling right now
+  group_by(SiteID, Region, Waterbody_name, sampleYear) %>%
+  arrange(SiteID, Region, Waterbody_name, sampleDate) %>% 
+  mutate(maxDT3d = rollapply(maxDT, 3, max, align = 'right', fill = NA),
+         week = week(sampleDate)) %>% 
+  group_by(SiteID, Region, Waterbody_name, sampleYear, week) %>% 
+  mutate(wk_meanDT = mean(meanDT))  
+
+tempMets %>% 
+  # filter(grepl("Eagle", Waterbody_name)) %>% 
+  group_by(SiteID, Region, Waterbody_name, sampleYear) %>%
+  summarize(Mx_maxDT3d = max(maxDT3d, na.rm = TRUE),
+            Mx_meanDTwk = max(wk_meanDT, na.rm = TRUE)) %>%
+  ggplot(aes(x = Mx_maxDT3d, y = Mx_meanDTwk)) + 
+  geom_point() +
+  stat_cor()
+
+
+tempMets %>% 
+  # filter(grepl("Eagle", Waterbody_name)) %>% 
+  group_by(SiteID, Region, Waterbody_name, sampleYear) %>%
+  summarize(Mx_maxDT3d = max(maxDT3d, na.rm = TRUE),
+            Mx_meanDTwk = max(wk_meanDT, na.rm = TRUE)) %>%
+  group_by(SiteID, Waterbody_name) %>% 
+  summarize(cor = cor(Mx_maxDT3d, Mx_meanDTwk)) %>% 
+  arrange(cor)
+
+```
+
+
+```{r pdf of max 3 daily correlations}
+
+pdf("output/daily_stats_cor.pdf")
+sites <- temp %>% filter(!is.na(maxDT)) %>% distinct(SiteID) %>% pull(SiteID)
+
+for(i in sites) {
+  p1 <- left_join(temp, temp_md %>% select(SiteID, Region, Waterbody_name)) %>% 
+  filter(!is.na(maxDT), SiteID == i) %>% 
+  group_by(SiteID, Region, Waterbody_name, sampleYear) %>%
+  arrange(SiteID, Region, Waterbody_name, sampleDate) %>% 
+  mutate(maxDT3d = rollapply(maxDT, 3, max, align = 'right', fill = NA)) %>% 
+  ggplot(aes(x = meanDT, y = maxDT3d)) +
+    geom_point() + 
+    stat_cor() +
+    geom_abline(aes(intercept = 0, slope = 1)) +
+    labs(title = temp_md %>% filter(SiteID == i) %>% mutate(lab = paste0(SiteID, Waterbody_name)) %>% pull(lab))
+  
+  p2 <- left_join(temp, temp_md %>% select(SiteID, Region, Waterbody_name)) %>% 
+  filter(!is.na(maxDT), SiteID == i) %>% 
+  group_by(SiteID, Region, Waterbody_name, sampleYear) %>%
+  arrange(SiteID, Region, Waterbody_name, sampleDate) %>% 
+  mutate(maxDT3d = rollapply(maxDT, 3, max, align = 'right', fill = NA),
+         week = week(sampleDate)) %>% 
+  group_by(SiteID, Region, Waterbody_name, sampleYear, week) %>% 
+  mutate(wk_meanDT = mean(meanDT))  %>% 
+  ggplot(aes(x = wk_meanDT, y = maxDT3d)) +
+    geom_point() + 
+    stat_cor() +
+    geom_abline(aes(intercept = 0, slope = 1)) +
+    labs(title = temp_md %>% filter(SiteID == i) %>% mutate(lab = paste0(SiteID, Waterbody_name)) %>% pull(lab))
+  
+  grid.arrange(p1, p2)
+} 
+
+dev.off()
+
+```
+
+
+
+Quick exploration of weekly regressions and correlations.
+
+```{r weekly air-stream temp models, eval = FALSE}
+temp_week <- left_join(temp, temp_md %>% select(SiteID, Region, Waterbody_name)) %>% 
+  mutate(week = week(sampleDate),
+         period = case_when(week < 30 ~ "early",
+                            TRUE ~ "late")) %>% 
+  group_by(SiteID, Region, Waterbody_name, sampleYear, period, week) %>% 
+  summarize(wk_meanDT = mean(meanDT),
+            wk_airDT = mean(airDT))  
+
+
+temp_week %>% 
+  filter(!is.na(wk_meanDT)) %>% 
+  ggplot(aes(x = wk_airDT, y = wk_meanDT, color = period)) +
+  geom_point() +
+  geom_smooth(method = "gam") 
+  facet_wrap(~SiteID)
+
+
+temp_week %>% 
+  nest(data = -SiteID) %>% 
+  mutate(week_lm = map(data, ~ lm(.x$wk_meanDT ~ .x$wk_airDT)),
+         tidied = map(week_lm, tidy)) %>% 
+  unnest(tidied)
+  
+```
+
+
+
+# Daily maximum ST models with discharge and time lags
+
+
+
+## Optimal air temperature lag
+
+Find optimal lag during open water season for all 33 sites. Find the strongest correlation between stream temperature and different lags of air temperature for each site and put in a data frame to pass to the modeling functions. For each site and year, can get a dataframe (acf value in ccf output) of correlations between different lags. Average the correlations across years and take the lag with the highest average for each site.
+
+For CCF function, there will be problems with internal NAs and it would be best to just skip those sites and years and only calculate lags for years with continuous time series. Use na.omit and not na.pass, which gives very strange results when there is missing data in the middle. It gives reasonable values for sites with just a day or two of missing data, but the CCF would still be incorrect.
+
+```{r NAs in ccf, eval = FALSE}
+
+#experimenting with different na actions for kalskag
+temp_dat %>% 
+  filter(month(sampleDate) %in% 5:9, SiteID == "adfg_Kalskag_Fish_Wheel", sampleYear == 2009) %>%
+  group_by(SiteID, sampleYear) %>%
+  complete(yday = 120:275) %>% 
+  mutate(year_ct = sum(!is.na(maxDT))) %>% 
+  filter(year_ct > 30) %>% #at least a month of data
+  group_by(SiteID, sampleYear, year_ct) %>% 
+  summarize(ccfout = list(ccf(airDT_max, maxDT, lag.max = 10, na.action = na.omit)$acf)) %>% 
+  unnest(ccfout) %>% 
+  ungroup() %>%  
+  mutate(lag = rep(-10:10, 1)) %>% 
+  group_by(SiteID, sampleYear, year_ct) %>% 
+  top_n(1, ccfout) 
+
+#need a way to skip or fill in NA for sites with error on ccf.  
+#safely modifies functions so you can store errors as null and move on.
+
+safe_ccf <- safely(ccf) 
+
+#correct answer, using na.omit, will give a NULL for 2009 in kalskag due to internal NAs
+temp_dat %>% 
+  filter(month(sampleDate) %in% 5:9, SiteID == "adfg_Kalskag_Fish_Wheel") %>%
+  group_by(SiteID, sampleYear) %>%
+  complete(yday = 120:275) %>% 
+  mutate(year_ct = sum(!is.na(maxDT))) %>% 
+  filter(year_ct > 30) %>% #at least a month of data
+  group_by(SiteID, sampleYear, year_ct) %>% 
+  summarize(ccfout = list(safe_ccf(airDT_max, maxDT, lag.max = 10, na.action = na.omit)$result$acf)) 
+
+```
+
+Test safely with prewhiten function, throwing errors on any year because of first step with AR model. Need to identify years without internal NAs and then can filter to remove them.
+
+Steps to only run prewhiten/ccf on the correct years:
+
+- complete by yday so that internal nas are filled in
+- na.trim to remove leading and trailing nas, but by group!
+- safely to get null for years with internal nas, but still run the rest.
+- use ifelse to test for null in result (value from safely), otherwise return data frame of acf correlations and lags
+
+
+```{r NAs in prewhiten, eval = FALSE}
+temp_dat %>% distinct(SiteID)
+
+safe_prewhiten <- safely(prewhiten)
+
+#pilot station has lots of summer missing data
+temp_test <- temp_dat %>% 
+  filter(yday %in% 120:275, SiteID == "usgs_15565447") %>%
+  group_by(SiteID, sampleYear) %>%
+  complete(yday = 120:275) %>%
+  mutate(year_ct = sum(!is.na(maxDT))) %>% 
+  filter(year_ct > 30) 
+
+temp_test <- do.call("rbind", by(temp_test, list(temp_test$SiteID, temp_test$sampleYear), na.trim))
+
+temp_test %>% count(is.na(meanDT), sampleYear)
+
+#all years have missing data so na
+temp_test %>% 
+  group_by(SiteID, sampleYear) %>% 
+  # filter(sampleYear == 2020) %>% 
+  summarize(pwout = ifelse(!is.null(safe_prewhiten(airDT_max, maxDT, lag.max = 10, plot = FALSE)[["result"]]),
+                           list(data.frame(acf = safe_prewhiten(airDT_max, maxDT, lag.max = 10, 
+                                                                plot = FALSE)$result$ccf$acf,
+                                           lag = safe_prewhiten(airDT_max, maxDT, lag.max = 10, 
+                                                                plot = FALSE)$result$ccf$lag)),
+                           NA)) 
+
+
+```
+
+Data frame of optimal time lags for all sites. To get optimal lag, used prewhitening to test for best lag by year, then averaged correlations for lags over different years within a site and selected the lag with the highest correlation for each site. (Although lags could vary by year due to discharge, we need site-specific models that predict to years outside when we have data.)
+
+```{r optimal air lag for all sites}
+
+safe_prewhiten <- safely(prewhiten)
+
+#complete fills in NAs for any missing data from may through september
+temp_trim <- temp_dat %>% 
+  filter(yday %in% 120:275) %>%
+  group_by(SiteID, sampleYear) %>%
+  complete(yday = 120:275) %>% #may through september
+  mutate(year_ct = sum(!is.na(maxDT))) %>% 
+  filter(year_ct > 30) # require one month of data
+
+#trim nas on beginning and end
+temp_trim <- do.call("rbind", by(temp_trim, list(temp_trim$SiteID, temp_trim$sampleYear), na.trim))
+
+daily_max_pw <- temp_trim %>% 
+  group_by(SiteID, sampleYear) %>% 
+  summarize(pwout = ifelse(!is.null(safe_prewhiten(airDT_max, maxDT, lag.max = 10, plot = FALSE)[["result"]]),
+                           list(data.frame(acf = safe_prewhiten(airDT_max, maxDT, lag.max = 10, 
+                                                                plot = FALSE)$result$ccf$acf,
+                                           lag = safe_prewhiten(airDT_max, maxDT, lag.max = 10, 
+                                                                plot = FALSE)$result$ccf$lag)), NA)) 
+
+daily_max_lags <- daily_max_pw %>% 
+  unnest(pwout) %>% 
+  group_by(SiteID, lag) %>% 
+  summarize(mean_acf = mean(abs(acf)),
+            yr_ct = n()) %>% 
+  top_n(1, mean_acf)
+
+
+#how many years of data total and years with complete data in the time series
+# so lags could be calculated
+#no results for pilot station bc missing data each summer
+
+left_join(temp_trim %>% 
+            ungroup() %>% 
+            distinct(SiteID, sampleYear) %>% 
+            count(SiteID, name = "total_yrs"),
+          daily_max_pw %>% unnest() %>%  
+            ungroup() %>% 
+            distinct(SiteID, sampleYear) %>% 
+            count(SiteID, name = "complete_yrs")) %>% 
+  mutate(percent = round(complete_yrs/total_yrs*100, 0)) %>% 
+  arrange(complete_yrs)
+
+
+```
+
+For usgs at pilot station, lots of missing data in the middle of each summer, which means no lags were calculated.  Group by complete time series over parts of each summer to explore an optimal lag. 
+
+optimal lag = -2 for pilot station
+
+
+```{r pilot station lags}
+temp_trim %>%
+  filter(SiteID == "usgs_15565447") %>% 
+  mutate(group = case_when(sampleDate >= as.Date("2014-05-21") & sampleDate <= as.Date("2014-09-23") ~ 1,
+                           sampleDate >= as.Date("2015-05-14") & sampleDate <= as.Date("2015-06-27") ~ 2,
+                           sampleDate >= as.Date("2015-08-14") & sampleDate <= as.Date("2015-10-02") ~ 3,
+                           sampleDate >= as.Date("2016-05-12") & sampleDate <= as.Date("2016-06-16") ~ 4,
+                           sampleDate >= as.Date("2016-06-30") & sampleDate <= as.Date("2016-09-30") ~ 5,
+                           sampleDate >= as.Date("2017-05-20") & sampleDate <= as.Date("2017-06-17") ~ 6,
+                           sampleDate >= as.Date("2017-07-26") & sampleDate <= as.Date("2017-09-30") ~ 7,
+                           sampleDate >= as.Date("2018-05-23") & sampleDate <= as.Date("2018-07-26") ~ 8,
+                           TRUE ~ NA_real_)) %>% 
+  filter(!is.na(group)) %>% 
+  group_by(group) %>% 
+  summarize(pwout = ifelse(!is.null(safe_prewhiten(airDT_max, maxDT, lag.max = 10, plot = FALSE)[["result"]]),
+                           list(data.frame(acf = safe_prewhiten(airDT_max, maxDT, lag.max = 10, 
+                                                                plot = FALSE)$result$ccf$acf,
+                                           lag = safe_prewhiten(airDT_max, maxDT, lag.max = 10, 
+                                                                plot = FALSE)$result$ccf$lag)), NA)) %>% 
+  unnest(pwout) %>% 
+  group_by(lag) %>% 
+  summarize(mean_acf = mean(abs(acf)),
+            yr_ct = n()) %>% 
+  top_n(1, mean_acf)  
+
+
+```
+
+Kuskokwim sonar is probably best site for migration in that system because it has four years of data. But, only mean daily temps, no maximums. 
+
+Optimal lag = 0 for kusko sonar
+
+```{r kusko sonar lag mean temps}
+#note we don't have maxes for BTF or the Kusko sonar
+anti_join(temp_dat %>% distinct(SiteID), daily_max_lags)
+
+#for kuskokwim sonar, can test for mean air-stream temp lags
+sonar_trim <- temp_dat %>% 
+  filter(SiteID == "adfg_Kuskokwim_Sonar", yday %in% 120:275) %>%
+  group_by(SiteID, sampleYear) %>%
+  complete(yday = 120:275) %>% 
+  select(-maxDT, -minDT, -mean_swe, -max_swe)
+
+sonar_trim <- do.call("rbind", by(sonar_trim, list(sonar_trim$sampleYear), na.trim))
+
+sonar_pw <- sonar_trim %>% 
+  group_by(sampleYear) %>% 
+  summarize(pwout = ifelse(!is.null(safe_prewhiten(airDT, meanDT, lag.max = 10, plot = FALSE)[["result"]]),
+                           list(data.frame(acf = safe_prewhiten(airDT, meanDT, lag.max = 10, 
+                                                                plot = FALSE)$result$ccf$acf,
+                                           lag = safe_prewhiten(airDT, meanDT, lag.max = 10, 
+                                                                plot = FALSE)$result$ccf$lag)), NA)) 
+sonar_pw  %>% 
+  unnest(pwout) %>% 
+  group_by(lag) %>% 
+  summarize(mean_acf = mean(abs(acf)),
+            yr_ct = n()) %>% 
+  top_n(1, mean_acf)
+
+```
+
+
+Create a data frame with the optimal lagged air temperatures for each site. Add this to the temp trim data frame, which removes leading and trailing NA within each site and year, but contains internal NAs. Most lags are only -1 so this would just add one more NA.
+
+```{r data frame with lags}
+
+#add better lag for pilot station and also for kusko, but that will need a new data frame for modeling 
+# since we only have daily means
+daily_max_lags <- daily_max_lags %>% 
+  bind_rows(data.frame(SiteID = c("adfg_Kuskokwim_Sonar", "usgs_15565447"),
+                       lag = c(0, -2), 
+                       mean_acf = c(0.323639, NA),
+                       yr_ct = c(4, 8)))
+
+temp_trim2 <- left_join(temp_trim, daily_max_lags %>% select(SiteID, lag)) %>%
+  group_by(SiteID, sampleYear, lag) %>% 
+  nest() %>%
+  mutate(airDT_max_lag = map(data, ~dplyr::lag(.$airDT_max, abs(lag)))) %>%
+  unnest() 
+
+#checking results, this site had a 4 day lag
+temp_trim2 %>% 
+  filter(SiteID == "adfg_Rapids")
+
+temp_trim2 %>% 
+  filter(SiteID == "usgs_15565447")
+
+#these are missing values 
+temp_trim2 %>% 
+  filter(is.na(sampleDate))
+
+temp_trim2 <- temp_trim2 %>% 
+  filter((!is.na(airDT_max_lag)),(!is.na(maxDT)))
+
+summary(temp_trim2)
+
+# save lags so can use for prediction data frame in 3_temperature_metrics script
+saveRDS(daily_max_lags, "output/dailyMax_tempLags.rds")
+
+```
+
+
+## Daily max regression 
+
+Per McNyset results, daily maximum and mean temperatures using DAYMET as input (max or mean). Split over seasons as most sites have hysteresis in the spring and add squared air temp and doy predictors. 
+
+Spring includes through week 29, which ended on July 22, 2015. Fall includes week 30 and later, which starts on July 23.
+
+Setting up three models for each season:
+
+* air temp and air temp squared + day of year
+* add in discharge
+* add in SWE
+
+Model performance:
+
+* variance explained (R2) for different models so can measure importance of discharge and swe (assumes predictors are orthogonal)
+* internal RMSE by model
+* cross-validated RMSE (to do)
+* table of sites: names, data source, number of daily measurements and years, time step, watershed area, % glacier area, % permafrost, annual discharge per glofas (to do)
+* table of model performance: R2 by model, RMSE, and cross-validated RMSE, NSC? (to do)
+* table of fitted parameters: coefficients for air temp + air temp2, doy, discharge, and swe. Include time lag for air temps. (to do)
+
+
+
+```{r variable correlations}
+
+panel.hist <- function(x, ...)
+{
+    usr <- par("usr")
+    par(usr = c(usr[1:2], 0, 1.5) )
+    h <- hist(x, plot = FALSE)
+    breaks <- h$breaks; nB <- length(breaks)
+    y <- h$counts; y <- y/max(y)
+    rect(breaks[-nB], 0, breaks[-1], y, col = "cyan", ...)
+}
+
+
+panel.cor <- function(x, y, digits = 2, prefix = "", cex.cor, ...)
+{
+    par(usr = c(0, 1, 0, 1))
+    r <- abs(cor(x, y, use = "pairwise.complete.obs"))
+    txt <- format(c(r, 0.123456789), digits = digits)[1]
+    txt <- paste0(prefix, txt)
+    if(missing(cex.cor)) cex.cor <- 0.8/strwidth(txt)
+    text(0.5, 0.5, txt, cex = cex.cor * r)
+}
+
+temp_trim2 %>% 
+  ungroup() %>% 
+  mutate(week = week(sampleDate),
+         season = case_when(week < 30 ~ "spring",
+                            TRUE ~ "fall")) %>% 
+  mutate(airlag2 = airDT_max_lag^2) %>% 
+  filter(season == "spring") %>% 
+  select(airDT_max_lag, airlag2, discharge, mean_swe, yday) %>%
+  pairs(upper.panel = panel.cor, diag.panel = panel.hist)
+
+temp_trim2 %>% 
+  ungroup() %>% 
+  mutate(week = week(sampleDate),
+         season = case_when(week < 30 ~ "spring",
+                            TRUE ~ "fall")) %>% 
+  mutate(airlag2 = airDT_max_lag^2) %>% 
+  filter(season == "fall") %>% 
+  select(airDT_max_lag, airlag2, discharge, mean_swe, yday) %>%
+  pairs(upper.panel = panel.cor, diag.panel = panel.hist)
+
+```
+
+
+
+```{r daily maximum models}
+
+temp_daily <- temp_trim2 %>%
+  ungroup() %>% 
+  mutate(week = week(sampleDate),
+         season = case_when(week < 30 ~ "spring",
+                            TRUE ~ "fall")) %>% 
+  filter(!is.na(maxDT)) %>% #ok since we have lags already calculated, this would only be internal nas within a time series
+  nest(data = -SiteID) %>% 
+  mutate(fit_sp1 = map(data, ~ lm(maxDT ~ airDT_max_lag + I(airDT_max_lag^2) + yday, data = .x %>% filter(season == "spring"))),
+         fit_fall1 = map(data, ~ lm(maxDT ~ airDT_max_lag + I(airDT_max_lag^2) + yday, data = .x %>% filter(season == "fall"))),
+         fit_sp2 = map(data, ~ lm(maxDT ~ airDT_max_lag + I(airDT_max_lag^2) + yday + discharge, data = .x %>% filter(season == "spring"))),
+         fit_fall2 = map(data, ~ lm(maxDT ~ airDT_max_lag + I(airDT_max_lag^2) + yday + discharge, data = .x %>% filter(season == "fall"))),
+         fit_sp3 = map(data, ~ lm(maxDT ~ airDT_max_lag + I(airDT_max_lag^2) + yday + discharge + mean_swe, data = .x %>% 
+                                           filter(season == "spring"))),
+         fit_fall3 = map(data, ~ lm(maxDT ~ airDT_max_lag + I(airDT_max_lag^2) + yday + discharge + mean_swe, data = .x %>% 
+                                             filter(season == "fall"))),
+         glance_sp1 = map(fit_sp1, glance),
+         glance_sp2 = map(fit_sp2, glance),
+         glance_sp3 = map(fit_sp3, glance),
+         glance_fl1 = map(fit_fall1, glance),
+         glance_fl2 = map(fit_fall2, glance),
+         glance_fl3 = map(fit_fall3, glance),
+         augment_sp1 = map(fit_sp1, augment),
+         augment_sp2 = map(fit_sp2, augment),
+         augment_sp3 = map(fit_sp3, augment),
+         augment_fl1 = map(fit_fall1, augment),
+         augment_fl2 = map(fit_fall2, augment),
+         augment_fl3 = map(fit_fall3, augment)) 
+
+```
+
+Just get r2 for nested models starting with air temperature + yday first, then adding in discharge and swe separately.
+
+```{r variance explained spring and fall daily max models}
+
+dailyMax_rsq <- temp_daily %>% 
+  unnest(glance_sp1) %>% 
+  select(SiteID, adj.r.squared) %>% 
+  mutate(model = "spring1") %>% 
+  bind_rows(temp_daily %>% 
+              unnest(glance_sp2) %>% 
+              select(SiteID, adj.r.squared) %>% 
+              mutate(model = "spring2")) %>% 
+  bind_rows(temp_daily %>% 
+              unnest(glance_sp3) %>% 
+              select(SiteID, adj.r.squared) %>% 
+              mutate(model = "spring3")) %>%
+  bind_rows(temp_daily %>% 
+              unnest(glance_fl1) %>% 
+              select(SiteID, adj.r.squared) %>% 
+              mutate(model = "fall1")) %>%
+  bind_rows(temp_daily %>% 
+              unnest(glance_fl2) %>% 
+              select(SiteID, adj.r.squared) %>% 
+              mutate(model = "fall2")) %>%
+  bind_rows(temp_daily %>% 
+              unnest(glance_fl3) %>% 
+              select(SiteID, adj.r.squared) %>% 
+              mutate(model = "fall3")) %>%
+  pivot_wider(names_from = model, values_from = adj.r.squared) %>%
+  mutate(discharge_sp = spring2 - spring1,
+         swe_sp = spring3 - spring2,
+         discharge_fl = fall2 - fall1,
+         swe_fl = fall3 - fall2) %>% 
+  pivot_longer(cols = !SiteID, names_to = "model", values_to = "rsq") %>% 
+  mutate(season = factor(case_when(grepl("sp", model) ~ "Spring",
+                                   TRUE ~ "Fall"),
+                         levels = c("Spring", "Fall")))
+
+  
+left_join(dailyMax_rsq, temp_md %>% select(SiteID, Waterbody_name)) %>% 
+  filter(!model %in% c("spring2", "spring3", "fall2", "fall3")) %>% 
+  mutate(modelf = factor(model, labels = c("Air", "Discharge", "SWE", "Air", "Discharge", "SWE"),
+                         levels = c("spring1", "discharge_sp", "swe_sp", "fall1", "discharge_fl", "swe_fl"))) %>% 
+  ggplot(aes(y = Waterbody_name, x = rsq, fill = modelf)) +
+  geom_col(position = position_stack(reverse = TRUE)) +
+  facet_wrap(~season) +
+  theme_bw() +
+  theme(axis.title.y = element_blank(), legend.position = "bottom") +
+  labs(x = bquote("Adjusted "~R^2), fill = "Covariate", title = "Maximum Daily Stream Temperature Models")
+
+ggsave("output/dailyMax_r2.jpeg")
+```
+
+Dotplot of RMSE for same set of models
+
+```{r rmse for spring and fall daily max models}
+
+dailyMax_rmse <- temp_daily %>% 
+  unnest(augment_sp1) %>% 
+  group_by(SiteID) %>% 
+  summarize(rmse = sqrt(mean((maxDT - .fitted)^2))) %>% 
+  mutate(model = "spring1") %>% 
+  bind_rows(temp_daily %>% 
+              unnest(augment_sp2) %>% 
+              group_by(SiteID) %>% 
+              summarize(rmse = sqrt(mean((maxDT - .fitted)^2))) %>% 
+              mutate(model = "spring2")) %>%
+  bind_rows(temp_daily %>% 
+              unnest(augment_sp3) %>% 
+              group_by(SiteID) %>% 
+              summarize(rmse = sqrt(mean((maxDT - .fitted)^2))) %>% 
+              mutate(model = "spring3")) %>%
+  bind_rows(temp_daily %>% 
+              unnest(augment_fl1) %>% 
+              group_by(SiteID) %>% 
+              summarize(rmse = sqrt(mean((maxDT - .fitted)^2))) %>% 
+              mutate(model = "fall1")) %>%
+  bind_rows(temp_daily %>% 
+              unnest(augment_fl2) %>% 
+              group_by(SiteID) %>% 
+              summarize(rmse = sqrt(mean((maxDT - .fitted)^2))) %>% 
+              mutate(model = "fall2")) %>%
+  bind_rows(temp_daily %>% 
+              unnest(augment_fl3) %>% 
+              group_by(SiteID) %>% 
+              summarize(rmse = sqrt(mean((maxDT - .fitted)^2))) %>% 
+              mutate(model = "fall3")) %>% 
+  mutate(season = factor(case_when(grepl("sp", model) ~ "Spring",
+                                   TRUE ~ "Fall"),
+                         levels = c("Spring", "Fall")))
+
+
+left_join(dailyMax_rmse, temp_md %>% select(SiteID, Waterbody_name)) %>% 
+  mutate(modelf = factor(model, labels = c("Air", "Air + Discharge", "Air + Discharge + SWE", 
+                                           "Air", "Air + Discharge", "Air + Discharge + SWE"),
+                         levels = c("spring1", "spring2", "spring3", "fall1", "fall2", "fall3"))) %>% 
+  ggplot(aes(y = fct_reorder(Waterbody_name, rmse), x = rmse, color = modelf)) +
+  geom_point() +
+  facet_wrap(~season) +
+  theme_bw() +
+  theme(axis.title.y = element_blank(), legend.position = "bottom") +
+  labs(x = "RMSE", color = "Model", title = "Maximum Daily Stream Temperature Models")
+
+ggsave("output/dailyMax_rmse.jpeg")
+```
+
+
+```{r}
+#eagle looks really bad, what is going on there?
+
+eagle_daily <- temp_trim2 %>%
+  ungroup() %>% 
+  mutate(week = week(sampleDate),
+         season = case_when(week < 30 ~ "spring",
+                            TRUE ~ "fall")) %>% 
+  filter(!is.na(maxDT), SiteID == "adfg_Eagle")  
+
+
+eagle_daily %>% 
+  ggplot(aes(x = airDT_max_lag, y = maxDT)) +
+  geom_point() +
+  geom_smooth(method = "lm", formula = y ~ x + I(x^2))
+
+lm(maxDT ~ airDT_max_lag + I(airDT_max_lag^2) + yday + discharge + mean_swe, data = eagle_daily %>% 
+                                           filter(season == "spring")) %>% 
+  summary()
+```
+
+
+```{r daily max regression predictions plot for chena}
+
+dailyMax_preds <- bind_rows(
+  bind_cols(temp_daily %>% 
+              unnest(data) %>%
+              filter(season == "spring") %>% 
+              select(season, sampleYear),
+            temp_daily %>% 
+              unnest(augment_sp3) %>% 
+              select(SiteID, maxDT:.fitted)),
+  bind_cols(temp_daily %>% 
+              unnest(data) %>%
+              filter(season == "fall") %>% 
+              select(season, sampleYear),
+            temp_daily %>% 
+              unnest(augment_fl3) %>% 
+              select(SiteID, maxDT:.fitted))
+)
+
+
+
+left_join(dailyMax_preds, temp_md %>% select(SiteID, Waterbody_name)) %>%  
+  filter(grepl("Chena", Waterbody_name)) %>% 
+  group_by(SiteID, sampleYear) %>%
+  complete(yday = 120:275) %>%
+  pivot_longer(cols = c(maxDT, .fitted)) %>% 
+  mutate(name = factor(name, levels = c(".fitted", "maxDT"),
+                       labels = c("Predictions", "Daily Max. ST"))) %>% 
+  ggplot(aes(x = yday, y = value, color = name)) +
+  geom_line() +
+  facet_wrap(~sampleYear) +
+  labs(x = "Day of Year", y = "Stream Temperature", color = "", title = "Daily Maximum ST and Predictions from Regression Model") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggsave("output/dailyMax_reg_chena.jpeg")
+```
+
+
+```{r all sites pdf of dailies}
+
+sites <- temp_trim2 %>% ungroup() %>% distinct(SiteID) %>% arrange(SiteID)
+pdf("output/daily_plots_32sites.pdf")
+for(i in 1:nrow(sites)) {
+  dat = left_join(sites %>% slice(i), temp_trim2) %>% 
+    filter(month(sampleDate) %in% 5:9) %>% 
+    mutate(week = week(sampleDate))
+  p1 <- ggplot(data = dat, aes(x = airDT_max, y = maxDT, color = week)) +
+    geom_point() +
+    stat_cor() +
+    labs(title = dat %>% distinct(SiteID))
+  p2 <- ggplot(data = dat, aes(x = airDT, y = meanDT, color = week)) +
+    geom_point() +
+    stat_cor() +
+    theme(legend.position = "none")
+  p3 <- dat %>% 
+    group_by(week, sampleYear) %>% 
+    summarize(week_st = mean(meanDT), week_at = mean(airDT)) %>% 
+    ggplot(aes(x = week_at, y = week_st, color = week)) +
+    geom_point() +
+    stat_cor() +
+    theme(legend.position = "none")
+  
+  grid.arrange(p1, p2, p3)
+}
+dev.off()
+
+```
+
+
+## BRT model for daily max
+
+Function is gbm for gradient boosted machine. I have called it boosted regression tree in the past, same thing, different name.
+
+
+```{r brt models}
+
+#Note, this first run takes hours so just adding to it below and saving.
+tempMax_brt <- temp_trim2 %>%
+  ungroup() %>% 
+  mutate(week = week(sampleDate),
+         season = case_when(week < 30 ~ "spring",
+                            TRUE ~ "fall")) %>% 
+  filter(!is.na(maxDT)) %>% #ok since we have lags already calculated, this would only be internal nas within a time series
+  nest(data = -SiteID) %>%
+  mutate(fit_sp1 = map(data, ~gbm(maxDT ~ airDT_max_lag + yday + discharge + mean_swe, 
+                                  interaction.depth = 3, cv.folds = 10, n.trees = 300,
+                                  data = .x %>% filter(season == "spring"))),
+         fit_fall1 = map(data, ~gbm(maxDT ~ airDT_max_lag + yday + discharge + mean_swe, 
+                                  interaction.depth = 3, cv.folds = 10, n.trees = 300,
+                                  data = .x %>% filter(season == "fall"))),
+         summ_sp1 = map(fit_sp1, summary),
+         pred_sp1 = map(fit_sp1, predict))
+
+tempMax_brt <- tempMax_brt %>% 
+  mutate(summ_fall1 = map(fit_fall1, summary),
+         pred_fall1 = map(fit_fall1, predict),
+         cv_preds_sp = map(fit_sp1, pluck("cv.fitted")),
+         cv_preds_fall = map(fit_fall1, pluck("cv.fitted"))) 
+
+
+# saveRDS(tempMax_brt, "output/dailyMax_brtModels.rds")
+tempMax_brt <- readRDS("output/dailyMax_brtModels.rds")
+
+
+tempMax_brt %>% 
+  filter(SiteID == "Togiak_MFLR") %>% 
+  unnest(data) %>% 
+  distinct(week, yday, sampleDate) %>% 
+  arrange(yday) %>% 
+  filter(week %in% 29:31)
+```
+
+
+```{r brt variable importance}
+
+
+bind_rows(tempMax_brt %>% 
+            unnest(summ_sp1) %>%
+            mutate(season = "Spring") %>% 
+            select(SiteID, var, rel.inf, season),
+          tempMax_brt %>% 
+            unnest(summ_fall1) %>%
+            mutate(season = "Fall") %>% 
+            select(SiteID, var, rel.inf, season)) %>% 
+  mutate(seasonf = factor(season, levels = c("Spring", "Fall")),
+         covf = factor(var, levels = c("yday", "airDT_max_lag", "discharge", "mean_swe"))) %>% 
+  left_join(temp_md %>% select(SiteID, Waterbody_name)) %>% 
+  ggplot(aes(y = Waterbody_name, x = rel.inf, fill = covf)) +
+  geom_col(position = position_stack(reverse = TRUE)) +
+  facet_wrap(~seasonf) +
+  theme_bw() +
+  theme(legend.position = "bottom", axis.title.y = element_blank()) +
+  labs(fill = "Covariate", x = "Relative Influence",
+       title = "Maximum Daily BRT Models")
+
+ggsave("output/dailyMax_brt_relinf.jpeg")
+
+```
+
+
+
+```{r brt rmse}
+
+brt_rmse <- bind_rows(
+  bind_cols(
+    tempMax_brt %>% 
+      unnest(pred_sp1) %>% 
+      select(SiteID, pred_sp1),
+    tempMax_brt %>% 
+      unnest(data) %>%
+      filter(season == "spring") %>% 
+      select(maxDT, season)
+    ) %>% 
+    rename(preds = pred_sp1),
+  bind_cols(
+    tempMax_brt %>% 
+      unnest(pred_fall1) %>% 
+      select(SiteID, pred_fall1),
+    tempMax_brt %>% 
+      unnest(data) %>%
+      filter(season == "fall") %>% 
+      select(maxDT, season)
+    ) %>% 
+    rename(preds = pred_fall1)
+) %>% 
+  group_by(SiteID, season) %>% 
+  summarize(rmse = sqrt(mean((maxDT - preds)^2)))
+
+left_join(brt_rmse, temp_md %>% select(SiteID, Waterbody_name)) %>% 
+  ggplot(aes(y = fct_reorder(Waterbody_name, rmse), x = rmse)) +
+  geom_point() +
+  facet_wrap(~season) +
+  theme_bw() +
+  theme(axis.title.y = element_blank(), legend.position = "bottom") +
+  labs(x = "RMSE", title = "Maximum Daily Stream Temperature BRT Models")
+
+ggsave("output/dailyMax_brt_rmse.jpeg")
+  
+```
+
+
+
+```{r brt cv error}
+
+gtest <- temp_trim2 %>%
+  ungroup() %>% 
+  mutate(week = week(sampleDate),
+         season = case_when(week < 30 ~ "spring",
+                            TRUE ~ "fall")) %>% 
+  filter(grepl("Chena", SiteID)) %>% 
+  gbm(maxDT ~ airDT_max_lag + yday + discharge + mean_swe, 
+      interaction.depth = 3, cv.folds = 10, n.trees = 1000, data = .,
+      shrinkage = .01)
+
+gbm.perf(gtest, method = "cv")
+
+#for getting cv rmse
+gtest$cv.fitted
+
+
+
+brt_cv_rmse <- bind_rows(
+  bind_cols(
+    tempMax_brt %>% 
+      unnest(cv_preds_sp) %>% 
+      select(SiteID, cv_preds_sp),
+    tempMax_brt %>% 
+      unnest(data) %>%
+      filter(season == "spring") %>% 
+      select(maxDT, season)
+    ) %>% 
+    rename(cv_preds = cv_preds_sp),
+  bind_cols(
+    tempMax_brt %>% 
+      unnest(cv_preds_fall) %>% 
+      select(SiteID, cv_preds_fall),
+    tempMax_brt %>% 
+      unnest(data) %>%
+      filter(season == "fall") %>% 
+      select(maxDT, season)
+    ) %>% 
+    rename(cv_preds = cv_preds_fall)
+) %>% 
+  group_by(SiteID, season) %>% 
+  summarize(rmspe = sqrt(mean((maxDT - cv_preds)^2)))
+
+left_join(brt_cv_rmse, temp_md %>% select(SiteID, Waterbody_name)) %>% 
+  left_join(brt_rmse) %>% 
+  pivot_longer(cols = c(rmse, rmspe)) %>% 
+  ggplot(aes(y = Waterbody_name, x = value, color = name)) +
+  geom_point() +
+  facet_wrap(~season) +
+  theme_bw() +
+  theme(axis.title.y = element_blank(), legend.position = "bottom") +
+  labs(x = "Prediction Error", title = "Maximum Daily Stream Temperature BRT Models",
+       color = "")
+
+ggsave("output/dailyMax_brt_rmse.jpeg")
+  
+brt_cv_rmse %>% 
+  group_by(season) %>% 
+  summarize(mean(rmspe),
+            sd(rmspe))
+```
+
+
+```{r brt predictions plot for chena}
+
+brt_preds <- bind_rows(
+  bind_cols(
+    tempMax_brt %>% 
+      unnest(pred_sp1) %>% 
+      select(SiteID, pred_sp1),
+    tempMax_brt %>% 
+      unnest(cv_preds_sp) %>% 
+      select(cv_preds_sp),
+    tempMax_brt %>% 
+      unnest(data) %>%
+      filter(season == "spring") %>% 
+      select(maxDT, season, yday, sampleYear)
+    ) %>% 
+    rename(preds = pred_sp1,
+           cv_preds = cv_preds_sp),
+  bind_cols(
+    tempMax_brt %>% 
+      unnest(pred_fall1) %>% 
+      select(SiteID, pred_fall1),
+    tempMax_brt %>% 
+      unnest(cv_preds_fall) %>% 
+      select(cv_preds_fall),
+    tempMax_brt %>% 
+      unnest(data) %>%
+      filter(season == "fall") %>% 
+      select(maxDT, season, yday, sampleYear)
+    ) %>% 
+    rename(preds = pred_fall1,
+           cv_preds = cv_preds_fall))
+
+
+left_join(brt_preds, temp_md %>% select(SiteID, Waterbody_name)) %>%  
+  filter(grepl("Chena", Waterbody_name)) %>% 
+  group_by(SiteID, sampleYear) %>%
+  complete(yday = 120:275) %>%
+  pivot_longer(cols = c(maxDT, preds, cv_preds)) %>% 
+  mutate(name = factor(name, levels = c("preds", "cv_preds", "maxDT"),
+                       labels = c("Predictions", "Cross-Validated Predictions", "Daily Max. ST"))) %>% 
+  ggplot(aes(x = yday, y = value, color = name)) +
+  geom_line() +
+  facet_wrap(~sampleYear) +
+  labs(x = "Day of Year", y = "Stream Temperature", color = "", title = "Daily Maximum ST and Predictions from BRT") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggsave("output/dailyMax_brt_Chena.jpeg")
+```
+
+
+
+
+## Nonlinear regression model for daily max
+
+Code below works well for grouped data, but will likely need to separate the sites a bit to get the model to converge.
+
+Having problems with starting values for nls. although they have a fairly easy to interpret physical meaning, used fixed starting values doesn't seem to work for all sites.
+
+
+nls models don't look like they are providing any improvement, probably worse than simple regressions.
+Look into nas in temp_trim2 df
+try out brt.
+
+``` {r all sites logistic model}
+summary(temp_trim2)
+
+
+yukonMS_nls <- temp_trim2 %>% 
+  ungroup() %>% 
+  mutate(week = week(sampleDate),
+         season = case_when(week < 30 ~ "spring",
+                            TRUE ~ "fall")) %>% 
+  filter(!is.na(maxDT), grepl("usgs_15565447|Rapids|Eagle", SiteID)) %>% 
+  nest(-SiteID) %>% 
+  mutate(fit_fall = map(.x = data, 
+                        .f = ~nls(maxDT ~ Asym/(1 + exp(scal*(xmid-airDT_max_lag))) + fitp/discharge, 
+                                  data = .x  %>% filter(season == "fall"), 
+                                  start = list(Asym = 20, xmid = 10, scal = 0.2, fitp = 0))),
+         fit_spring = map(.x = data, 
+                          .f = ~nls(maxDT ~ Asym/(1 + exp(scal*(xmid-airDT_max_lag))) + fitp/discharge, 
+                                    data = .x  %>% filter(season == "spring"), 
+                                    start = list(Asym = 20, xmid = 10, scal = 0.2, fitp = 0))),
+         tidied_fall = map(fit_fall, tidy),
+         glanced_fall = map(fit_fall, glance),
+         augmented_fall = map(fit_fall, augment),
+         tidied_spring = map(fit_spring, tidy),
+         glanced_spring = map(fit_spring, glance),
+         augmented_spring = map(fit_spring, augment))
+
+yukonMS_nls %>% 
+  unnest(augmented_spring) %>% 
+  group_by(SiteID) %>% 
+  summarize(rmse = sqrt(mean((maxDT - .fitted)^2)))
+
+yukonMS_nls %>% 
+  unnest(augmented_spring) %>% 
+  ggplot(aes(x = .fitted, y = maxDT)) +
+  geom_point() +
+  geom_smooth() +
+  facet_wrap(~SiteID, scales = "free")
+
+
+yukonMS_nls %>% 
+  unnest(augmented_fall) %>% 
+  group_by(SiteID) %>% 
+  summarize(rmse = sqrt(mean((maxDT - .fitted)^2)))
+```
+
+
+```{r}
+
+temp_trim2 %>% 
+  ungroup() %>% 
+  mutate(week = week(sampleDate),
+         season = case_when(week < 30 ~ "spring",
+                            TRUE ~ "fall")) %>% 
+  filter(!is.na(maxDT), grepl("avf", SiteID)) %>% 
+  nest(-SiteID) %>% 
+  mutate(fit = map(.x = data, 
+                      .f = ~nls(maxDT ~ Asym/(1 + exp(scal*(xmid-airDT_max_lag))), 
+                                data = .x  %>% filter(season == "spring"), 
+                                start = list(Asym = 20, xmid = 10, scal = 0.2))),
+         tidied = map(fit, tidy),
+         glanced = map(fit, glance),
+         augmented = map(fit, augment)) %>% 
+  unnest(augmented) %>% 
+  group_by(SiteID) %>% 
+  summarize(rmse = sqrt(mean((maxDT - .fitted)^2)))
+
+
+```
+
+```{r}
+
+yukonMs_nls <- temp_trim2 %>% 
+  ungroup() %>% 
+  mutate(week = week(sampleDate),
+         season = case_when(week < 30 ~ "spring",
+                            TRUE ~ "fall")) %>% 
+  filter(!is.na(maxDT), grepl("Rapids|Eagle|1556", SiteID)) %>% 
+  nest(-SiteID) %>% 
+  mutate(fit_sp = map(.x = data, 
+                      .f = ~nls(maxDT ~ Asym/(1 + exp(scal*(xmid-airDT_max_lag))), 
+                                data = .x %>% filter(season == "spring"), 
+                                start = list(Asym = 20, xmid = 10, scal = 1))),
+         fit_fall = map(.x = data, 
+                      .f = ~nls(maxDT ~ Asym/(1 + exp(scal*(xmid-airDT_max_lag))), 
+                                data = .x  %>% filter(season == "fall"), 
+                                start = list(Asym = 20, xmid = 10, scal = 1))),
+         tidied_sp = map(fit_sp, tidy),
+         glanced_sp = map(fit_sp, glance),
+         augmented_sp = map(fit_sp, augment),
+         tidied_fl = map(fit_fall, tidy),
+         glanced_fl = map(fit_fall, glance),
+         augmented_fl = map(fit_fall, augment)) 
+ 
+
+yukonMs_nls %>% 
+  unnest(augmented) %>% 
+  ggplot() +
+  geom_point(aes(x = airDT_max, y = maxDT)) +
+  geom_line(aes(x = airDT_max, y = .fitted), color = "blue") +
+  facet_wrap(~SiteID)
+
+#getting error on starting values,throw this in a loop to see which site is causing the problems.
+
+sites <- temp_nls_dat %>% distinct(SiteID)
+for(i in 5:nrow(sites)) {
+  dat = left_join(sites %>% slice(i), temp_nls_dat)
+  fit = nls(meanDT ~ Asym/(1 + exp(scal*airDT)), 
+            data = dat,
+            start = list(Asym = 5, scal = 5))
+}
+
+
+temp_trim2 %>% 
+  nest(-SiteID) %>% 
+  mutate(fit = map(.x = data, .f = ~ nls(meanDT ~ Asym/(1 + exp(xmid - airDT)), data = .x,
+                                         start = list(Asym = 0, xmid = 1))),
+         tidied = map(fit, tidy)) %>% 
+  unnest(tidied) #%>% 
+  filter(term == "airDT")
+  
+```
+
+
+
+# Daily mean ST models
+
+Switched to daily mean models for a few reasons: 
+
+* this should give us more mainstem Kuskokwim sites for the analysis. (Daily max only available for Kalskag, which is pretty high up the mainstem.)
+* since daily max is an instantaneous temperature and continuous temps were collected at different intervals across sites, a daily mean would be more comparable across sites.
+* we should be able to improve model performance for daily means. AT-ST relationships tend to become stronger at longer time intervals (days to weeks to months) and we'd expect the same for an instantaneous max to a daily mean.
+
+## Optimal air temperature lag for daily means
+
+Find optimal lag during open water season for all 33 sites. Find the strongest correlation between stream temperature and different lags of air temperature for each site and put in a data frame to pass to the modeling functions. For each site and year, can get a dataframe (acf value in ccf output) of correlations between different lags. Average the correlations across years and take the lag with the highest average for each site.
+
+Data frame of optimal time lags for all sites. To get optimal lag, used prewhitening to test for best lag by year, then averaged correlations for lags over different years within a site and selected the lag with the highest correlation for each site. (Although lags could vary by year due to discharge, we need site-specific models that predict to years outside when we have data.)
+
+```{r optimal air lag for mean daily temps}
+
+safe_prewhiten <- safely(prewhiten)
+
+#complete fills in NAs for any missing data from may through september, 50,389 records
+temp_trim_mn <- temp_dat %>% 
+  filter(yday %in% 120:275) %>%
+  group_by(SiteID, sampleYear) %>%
+  complete(yday = 120:275) %>% #may through september
+  mutate(year_ct = sum(!is.na(meanDT))) %>% 
+  filter(year_ct > 30) %>% # require one month of data
+  select(-maxDT, -minDT) #missing data in max/min are causing problems in next trim function
+
+#trim nas on beginning and end, 32,700 records
+temp_trim_mn <- do.call("rbind", by(temp_trim_mn, list(temp_trim_mn$SiteID, temp_trim_mn$sampleYear),
+                                    na.trim))
+#all there
+anti_join(temp_dat %>% distinct(SiteID), temp_trim_mn %>% ungroup() %>% distinct(SiteID))  
+
+daily_mean_pw <- temp_trim_mn %>% 
+  group_by(SiteID, sampleYear) %>% 
+  summarize(pwout = ifelse(!is.null(safe_prewhiten(airDT, meanDT, lag.max = 10, plot = FALSE)[["result"]]),
+                           list(data.frame(acf = safe_prewhiten(airDT, meanDT, lag.max = 10, 
+                                                                plot = FALSE)$result$ccf$acf,
+                                           lag = safe_prewhiten(airDT, meanDT, lag.max = 10, 
+                                                                plot = FALSE)$result$ccf$lag)), NA)) 
+
+daily_mean_lags <- daily_mean_pw %>% 
+  unnest(cols = c(pwout)) %>% 
+  group_by(SiteID, lag) %>% 
+  summarize(mean_acf = mean(abs(acf)),
+            yr_ct = n()) %>% 
+  top_n(1, mean_acf)
+
+
+#how many years of data total and years with complete data in the time series
+# so lags could be calculated
+#no results for pilot station bc missing data each summer
+
+left_join(temp_trim_mn %>% 
+            ungroup() %>% 
+            distinct(SiteID, sampleYear) %>% 
+            count(SiteID, name = "total_yrs"),
+          daily_mean_pw %>% unnest() %>%  
+            ungroup() %>% 
+            distinct(SiteID, sampleYear) %>% 
+            count(SiteID, name = "complete_yrs")) %>% 
+  mutate(percent = round(complete_yrs/total_yrs*100, 0)) %>% 
+  arrange(complete_yrs)
+
+
+```
+
+For usgs at pilot station, lots of missing data in the middle of each summer, but updated dataset with 2019-2021 indicated a lag of -1. Check this by grouping by complete time series over parts of each summer to explore an optimal lag. 
+
+optimal lag = -1 for pilot station daily means using previous years so all good.
+
+
+```{r pilot station lags for mean daily temps}
+temp_trim %>%
+  filter(SiteID == "usgs_15565447") %>% 
+  mutate(group = case_when(sampleDate >= as.Date("2014-05-21") & sampleDate <= as.Date("2014-09-23") ~ 1,
+                           sampleDate >= as.Date("2015-05-14") & sampleDate <= as.Date("2015-06-27") ~ 2,
+                           sampleDate >= as.Date("2015-08-14") & sampleDate <= as.Date("2015-10-02") ~ 3,
+                           sampleDate >= as.Date("2016-05-12") & sampleDate <= as.Date("2016-06-16") ~ 4,
+                           sampleDate >= as.Date("2016-06-30") & sampleDate <= as.Date("2016-09-30") ~ 5,
+                           sampleDate >= as.Date("2017-05-20") & sampleDate <= as.Date("2017-06-17") ~ 6,
+                           sampleDate >= as.Date("2017-07-26") & sampleDate <= as.Date("2017-09-30") ~ 7,
+                           sampleDate >= as.Date("2018-05-23") & sampleDate <= as.Date("2018-07-26") ~ 8,
+                           TRUE ~ NA_real_)) %>% 
+  filter(!is.na(group)) %>% 
+  group_by(group) %>% 
+  summarize(pwout = ifelse(!is.null(safe_prewhiten(airDT, meanDT, lag.max = 10, plot = FALSE)[["result"]]),
+                           list(data.frame(acf = safe_prewhiten(airDT, meanDT, lag.max = 10, 
+                                                                plot = FALSE)$result$ccf$acf,
+                                           lag = safe_prewhiten(airDT, meanDT, lag.max = 10, 
+                                                                plot = FALSE)$result$ccf$lag)), NA)) %>% 
+  unnest(pwout) %>% 
+  group_by(lag) %>% 
+  summarize(mean_acf = mean(abs(acf)),
+            yr_ct = n()) %>% 
+  top_n(1, mean_acf)  
+
+
+```
+
+Create a data frame with the optimal lagged air temperatures for each site. Add this to the temp trim data frame, which removes leading and trailing NA within each site and year, but contains internal NAs. Most lags are only -1 so this would just add one more NA.
+
+```{r data frame with lags for mean daily temps}
+
+temp_trim_mn2 <- left_join(temp_trim_mn, daily_mean_lags %>% select(SiteID, lag)) %>%
+  group_by(SiteID, sampleYear, lag) %>% 
+  nest() %>%
+  mutate(airDT_lag = map(data, ~dplyr::lag(.$airDT, abs(lag)))) %>%
+  unnest() 
+
+#checking results, this site had a 3 day lag
+temp_trim_mn2 %>% 
+  filter(SiteID == "adfg_Rapids")
+
+temp_trim_mn2 %>% 
+  filter(SiteID == "usgs_15565447")
+
+#these are missing values 
+temp_trim_mn2 %>% 
+  filter(is.na(sampleDate))
+
+temp_trim_mn2 <- temp_trim_mn2 %>% 
+  filter((!is.na(airDT_lag)),(!is.na(meanDT)))
+
+summary(temp_trim_mn2)
+
+# save lags so can use for prediction data frame in 3_temperature_metrics script
+# saveRDS(daily_mean_lags, "output/dailyMean_tempLags.rds")
+
+```
+
+
+
+
+
+## Daily mean regression 
+
+Per McNyset results, daily maximum and mean temperatures using DAYMET as input (max or mean). Split over seasons as most sites have hysteresis in the spring and add squared air temp and doy predictors. 
+
+Spring includes through week 29, which ended on July 22, 2015. Fall includes week 30 and later, which starts on July 23.
+
+Setting up one model for each season: air temp and air temp squared + day of year +  discharge + annual April 1 SWE. Need to center air temp prior to squaring so the two terms are not correlated and also then 0 is within the range of the data so coefficient for centered air temp is interpretable as change in ST when squared term is 0. 
+
+Model performance:
+
+* relative importance using relaimpo package - new to this so try it out.
+* internal RMSE by model
+* cross-validated RMSE - many packages and functions to try.
+* table of sites: names, data source, number of daily measurements and years, time step, watershed area, % glacier area, % permafrost, annual discharge per glofas (to do)
+* table of model performance: R2 by model, RMSE, and cross-validated RMSE, NSC? (to do)
+* table of fitted parameters: coefficients for air temp + air temp2, doy, discharge, and swe. Include time lag for air temps. (to do)
+
+
+
+```{r variable correlations for mean st}
+
+#note r > 0.6 for air temp and year day
+temp_trim_mn2 %>% 
+  ungroup() %>% 
+  group_by(SiteID) %>% 
+  mutate(week = week(sampleDate),
+         season = case_when(week < 30 ~ "spring",
+                            TRUE ~ "fall"),
+         airDT_lag_cen = scale(airDT_lag),
+         airDT_lag_cen2 = airDT_lag_cen^2)  %>%  
+  ungroup() %>% 
+  filter(season == "spring") %>%
+  select(airDT_lag,discharge, mean_swe, yday) %>%
+  pairs(upper.panel = panel.cor, diag.panel = panel.hist)
+
+temp_trim_mn2 %>% 
+  ungroup() %>% 
+  group_by(SiteID) %>% 
+  mutate(week = week(sampleDate),
+         season = case_when(week < 30 ~ "spring",
+                            TRUE ~ "fall"),
+         airDT_lag_cen = scale(airDT_lag),
+         airDT_lag_cen2 = airDT_lag_cen^2)  %>%  
+  ungroup() %>% 
+  filter(season == "spring") %>%
+  select(airDT_lag_cen, airDT_lag_cen2, discharge, mean_swe, yday) %>%
+  pairs(upper.panel = panel.cor, diag.panel = panel.hist)
+
+temp_trim_mn2 %>% 
+  ungroup() %>% 
+  group_by(SiteID) %>% 
+  mutate(week = week(sampleDate),
+         season = case_when(week < 30 ~ "spring",
+                            TRUE ~ "fall"),
+         airDT_lag_cen = scale(airDT_lag),
+         airDT_lag_cen2 = airDT_lag_cen^2)  %>%  
+  ungroup() %>% 
+  filter(season == "fall") %>%
+  select(airDT_lag_cen, airDT_lag_cen2, discharge, mean_swe, yday) %>%
+  pairs(upper.panel = panel.cor, diag.panel = panel.hist)
+
+```
+
+
+
+```{r daily mean regression models}
+
+temp_daily_mn <- temp_trim_mn2 %>%
+  ungroup() %>% 
+  group_by(SiteID) %>% 
+  mutate(week = week(sampleDate),
+         season = case_when(week < 30 ~ "spring",
+                            TRUE ~ "fall"),
+         airDT_lag_cen = scale(airDT_lag),
+         airDT_lag_cen2 = airDT_lag_cen^2) %>%
+  nest(data = -SiteID) %>% 
+  mutate(lm_sp = map(data, ~ lm(meanDT ~ airDT_lag_cen + airDT_lag_cen2 + yday + discharge + mean_swe, data = .x %>% 
+                                           filter(season == "spring"), x = TRUE, y = TRUE)),
+         lm_fall = map(data, ~ lm(meanDT ~ airDT_lag_cen + airDT_lag_cen2 + yday + discharge + mean_swe, data = .x %>% 
+                                             filter(season == "fall"), x = TRUE, y = TRUE)),
+         glance_sp = map(lm_sp, glance),
+         glance_fall = map(lm_fall, glance),
+         augment_sp = map(lm_sp, augment),
+         augment_fall = map(lm_fall, augment)) 
+
+# saveRDS(temp_daily_mn, "output/dailyMean_regModels.rds")
+temp_daily_mn <- readRDS("output/dailyMean_regModels.rds")
+
+
+temp_daily_mn %>% names()
+
+```
+
+R2 for models
+
+```{r variance explained spring and fall daily max models}
+
+dailyMean_rsq <- temp_daily_mn %>% 
+  unnest(glance_sp) %>% 
+  select(SiteID, adj.r.squared) %>% 
+  mutate(model = "spring") %>% 
+  bind_rows(temp_daily_mn %>% 
+              unnest(glance_fall) %>% 
+              select(SiteID, adj.r.squared) %>% 
+              mutate(model = "fall")) %>%
+  pivot_wider(names_from = model, values_from = adj.r.squared) %>%
+  pivot_longer(cols = !SiteID, names_to = "model", values_to = "rsq") %>% 
+  mutate(season = factor(case_when(grepl("sp", model) ~ "Spring",
+                                   TRUE ~ "Fall"),
+                         levels = c("Spring", "Fall")))
+
+  
+left_join(dailyMean_rsq, temp_md %>% select(SiteID, Waterbody_name)) %>% 
+  ggplot(aes(y = fct_reorder(Waterbody_name, rsq), x = rsq, color = season)) +
+  geom_point() +
+  theme_bw() +
+  theme(axis.title.y = element_blank(), legend.position = "bottom") +
+  labs(x = bquote("Adjusted "~R^2), title = "Mean Daily Stream Temperature Models")
+
+ggsave("output/dailyMean_r2.jpeg")
+```
+
+Dotplot of RMSE for same set of models
+
+```{r rmse for daily mean models}
+
+dailyMean_rmse <- bind_rows(
+  temp_daily_mn %>% 
+    select(SiteID, augment_sp) %>% 
+    unnest(augment_sp) %>% 
+    mutate(season = "Spring"),
+  temp_daily_mn %>% 
+    select(SiteID, augment_fall) %>% 
+    unnest(augment_fall) %>% 
+    mutate(season = "Fall")
+) %>% 
+  group_by(SiteID) %>% 
+  summarize(rmse = sqrt(mean((meanDT - .fitted)^2)),
+            cor_op = cor(meanDT, .fitted))
+
+
+left_join(dailyMean_rmse, temp_md %>% select(SiteID, Waterbody_name)) %>% 
+  ggplot(aes(y = fct_reorder(Waterbody_name, rmse), x = rmse)) +
+  geom_point() +
+  theme_bw() +
+  theme(axis.title.y = element_blank(), legend.position = "bottom") +
+  labs(x = "RMSE", title = "Mean Daily Stream Temperature Models")
+
+ggsave("output/dailyMean_rmse.jpeg")
+```
+
+Cross validated rmse
+
+```{r example cv regression code}
+
+cv  <- crossv_kfold(mpg, k = 5)
+
+models1  <- map(cv$train, ~lm(hwy ~ displ, data = .))
+
+# get_pred  <- function(model, test_data){
+#     data  <- as.data.frame(test_data)
+#     pred  <- add_predictions(data, model)
+#     return(pred)
+# }
+# 
+# pred1  <- map2_df(models1, cv$test, get_pred, .id = "Run")
+# 
+# MSE1  <- pred1 %>% group_by(Run) %>% 
+#     summarise(MSE = mean( (hwy - pred)^2))
+# MSE1
+
+#my adaptation to code above
+#add lm models and predict using testing data
+cv <- cv %>% 
+  mutate(models = map(train, ~lm(hwy ~ displ, data = ., x = TRUE, y = TRUE)),
+         preds = map2(.x = models, .y = test, ~ predict(.x, newdata = .y)))
+
+#bind test data frame to predictions and calculate rmsep
+bind_cols(cv %>% 
+  mutate(test_data = map(.x = test, ~ as.data.frame(.x))) %>% 
+  unnest(test_data) %>% 
+    select(.id, manufacturer:class),
+  cv %>% 
+    unnest(preds) %>% 
+    select(preds)) %>% 
+  summarize(rmsep = sqrt(mean((hwy-preds)^2)))
+  
+# see if I get same results with this package.
+library(lmvar)
+fit <- lm(hwy ~ displ, data = mpg, x = TRUE, y = TRUE)
+
+fit.cv <- cv.lm(fit, k = 10)
+
+cv
+
+cv <- cv %>% 
+  mutate(map(models, ~ cv.lm(., k = 10)))
+
+cv
+
+```
+
+Tried using a function that does cross-validation and calculates RMSE for all out of sample observations, but something isn't right here because the rmse from the cross-validation are higher than the rmse from the original models!
+
+```{r cv rmse for daily mean regression}
+temp_daily_mn <- temp_daily_mn %>% 
+  mutate(cv_sp = map(lm_sp, ~ cv.lm(., k = 10)),
+         cv_fall = map(lm_fall, ~ cv.lm(., k = 10)))
+
+saveRDS(temp_daily_mn, "output/dailyMean_regModels.rds")
+
+temp_daily_mn %>% 
+  mutate(cv_sp2 = map(cv_sp, function(x) unlist(x) %>% as_tibble(rownames = "name"))) %>% 
+  unnest(cv_sp2)
+
+reg_mean_cv_rmse <- bind_rows(
+  temp_daily_mn %>% 
+    mutate(cv_sp2 = map(cv_sp, function(x) unlist(x) %>% as_tibble(rownames = "name"))) %>% 
+    select(SiteID, cv_sp2) %>% 
+    unnest(cv_sp2) %>% 
+    mutate(season = "Spring"),
+  temp_daily_mn %>% 
+    mutate(cv_fall2 = map(cv_fall, function(x) unlist(x) %>% as_tibble(rownames = "name"))) %>% 
+    select(SiteID, cv_fall2) %>% 
+    unnest(cv_fall2) %>% 
+    mutate(season = "Fall")
+)
+
+reg_mean_cv_rmse %>%
+  filter(name == "MSE_sqrt.mean") %>% 
+  select(SiteID, season, rmsep = value) #%>% 
+  group_by(SiteID) %>% 
+  summarize(rmsep = mean(rmsep)) %>% 
+  left_join(temp_md %>% select(SiteID, Waterbody_name)) %>% 
+  left_join(dailyMean_rmse) #%>%
+  pivot_longer(cols = c(rmsep, rmse)) %>% 
+  ggplot(aes(y = fct_reorder(Waterbody_name,  value), x = value, color = name)) +
+  geom_point() +
+  # facet_wrap(~season) +
+  theme_bw() +
+  theme(axis.title.y = element_blank(), legend.position = "bottom") +
+  labs(x = "Prediction Error", title = "Mean Daily Stream Temperature Regression Models",
+       color = "")
+```
+
+
+```{r}
+temp_daily_mn %>% 
+  filter(grepl("Chena", SiteID)) %>% 
+  mutate(cv = map(data, crossv_kfold())
+```
+
+
+```{r daily mean regression predictions plot for chena}
+
+dailyMean_preds <- bind_rows(
+  bind_cols(temp_daily_mn %>% 
+              unnest(data) %>%
+              filter(season == "spring") %>% 
+              select(SiteID, season, sampleDate, sampleYear),
+            temp_daily_mn %>% 
+              unnest(augment_sp) %>% 
+              ungroup() %>% 
+              select(meanDT:.fitted)),
+  bind_cols(temp_daily_mn %>% 
+              unnest(data) %>%
+              filter(season == "fall") %>% 
+              select(season, sampleYear),
+            temp_daily_mn %>% 
+              unnest(augment_fall) %>% 
+              ungroup() %>% 
+              select(meanDT:.fitted))
+)
+
+
+
+left_join(temp_daily_mn %>% 
+              unnest(data) %>%
+              filter(season == "spring") %>% 
+              select(SiteID, season, sampleDate, sampleYear) %>% 
+            count(SiteID),
+            temp_daily_mn %>% 
+              unnest(augment_sp) %>% 
+              ungroup() %>% 
+              select(SiteID, meanDT:.fitted) %>% 
+            count(SiteID, name = "augment"))
+
+
+left_join(dailyMean_preds, temp_md %>% select(SiteID, Waterbody_name)) %>%  
+  filter(grepl("Chena", Waterbody_name)) %>% 
+  group_by(SiteID, sampleYear) %>%
+  complete(yday = 120:275) %>%
+  pivot_longer(cols = c(meanDT, .fitted)) %>% 
+  mutate(name = factor(name, levels = c(".fitted", "meanDT"),
+                       labels = c("Predictions", "Daily Mean ST"))) %>% 
+  ggplot(aes(x = yday, y = value, color = name)) +
+  geom_line() +
+  facet_wrap(~sampleYear) +
+  labs(x = "Day of Year", y = "Stream Temperature", color = "", title = "Daily Mean ST and Predictions from Regression Model") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggsave("output/dailyMean_reg_chena.jpeg")
+```
+
+
+
+
+
+
+## BRT model for daily mean
+
+Function is gbm for gradient boosted machine. I have called it boosted regression tree in the past, same thing, different name.
+
+
+```{r brt models}
+
+temp_trim_mn2 %>% 
+  ungroup() %>% 
+  mutate(week = week(sampleDate),
+         season = case_when(week < 30 ~ "spring",
+                            TRUE ~ "fall")) %>% 
+  filter(!is.na(meanDT)) %>%
+  count(SiteID, season)
+
+#Note, this first run takes hours so just adding to it below and saving.
+tempMean_brt <- temp_trim_mn2 %>%
+  ungroup() %>% 
+  mutate(week = week(sampleDate),
+         season = case_when(week < 30 ~ "spring",
+                            TRUE ~ "fall")) %>% 
+  filter(!is.na(meanDT)) %>% #ok since we have lags already calculated, this would only be internal nas within a time series
+  nest(data = -SiteID) %>%
+  mutate(fit_sp1 = map(data, ~gbm(meanDT ~ airDT_lag + yday + discharge + mean_swe, 
+                                  interaction.depth = 3, cv.folds = 10, n.trees = 300,
+                                  data = .x %>% filter(season == "spring"))),
+         fit_fall1 = map(data, ~gbm(meanDT ~ airDT_lag + yday + discharge + mean_swe, 
+                                  interaction.depth = 3, cv.folds = 10, n.trees = 300,
+                                  data = .x %>% filter(season == "fall"))),
+         summ_sp1 = map(fit_sp1, summary),
+         pred_sp1 = map(fit_sp1, predict))
+
+tempMean_brt <- tempMean_brt %>% 
+  mutate(summ_fall1 = map(fit_fall1, summary),
+         pred_fall1 = map(fit_fall1, predict),
+         cv_preds_sp = map(fit_sp1, pluck("cv.fitted")),
+         cv_preds_fall = map(fit_fall1, pluck("cv.fitted"))) 
+
+
+# saveRDS(tempMean_brt, "output/dailyMean_brtModels.rds")
+tempMean_brt <- readRDS("output/dailyMean_brtModels.rds")
+
+
+tempMean_brt %>% 
+  filter(SiteID == "Togiak_MFLR") %>% 
+  unnest(data) %>% 
+  distinct(week, yday, sampleDate) %>% 
+  arrange(yday) %>% 
+  filter(week %in% 29:31)
+```
+
+
+```{r brt variable importance}
+
+
+bind_rows(tempMean_brt %>% 
+            unnest(summ_sp1) %>%
+            mutate(season = "Spring") %>% 
+            select(SiteID, var, rel.inf, season),
+          tempMean_brt %>% 
+            unnest(summ_fall1) %>%
+            mutate(season = "Fall") %>% 
+            select(SiteID, var, rel.inf, season)) %>% 
+  mutate(seasonf = factor(season, levels = c("Spring", "Fall")),
+         covf = factor(var, levels = c("yday", "airDT_lag", "discharge", "mean_swe"))) %>% 
+  left_join(temp_md %>% select(SiteID, Waterbody_name)) %>% 
+  ggplot(aes(y = Waterbody_name, x = rel.inf, fill = covf)) +
+  geom_col(position = position_stack(reverse = TRUE)) +
+  facet_wrap(~seasonf) +
+  theme_bw() +
+  theme(legend.position = "bottom", axis.title.y = element_blank()) +
+  labs(fill = "Covariate", x = "Relative Influence",
+       title = "Mean Daily BRT Models")
+
+ggsave("output/dailyMean_brt_relinf.jpeg")
+
+```
+
+
+
+```{r brt rmse}
+
+brt_mean_rmse <- bind_rows(
+  bind_cols(
+    tempMean_brt %>% 
+      unnest(pred_sp1) %>% 
+      select(SiteID, pred_sp1),
+    tempMean_brt %>% 
+      unnest(data) %>%
+      filter(season == "spring") %>% 
+      select(meanDT, season)
+    ) %>% 
+    rename(preds = pred_sp1),
+  bind_cols(
+    tempMean_brt %>% 
+      unnest(pred_fall1) %>% 
+      select(SiteID, pred_fall1),
+    tempMean_brt %>% 
+      unnest(data) %>%
+      filter(season == "fall") %>% 
+      select(meanDT, season)
+    ) %>% 
+    rename(preds = pred_fall1)
+) %>% 
+  group_by(SiteID, season) %>% 
+  summarize(rmse = sqrt(mean((meanDT - preds)^2)),
+            cor = cor(meanDT, preds))
+
+brt_mean_rmse %>% 
+  ungroup() %>% 
+  # group_by(season) %>% 
+  summarize(mean(rmse), 
+            mean(cor))
+
+
+left_join(brt_mean_rmse, temp_md %>% select(SiteID, Waterbody_name)) %>% 
+  mutate(season = factor(season, levels = c("spring", "fall"))) %>% 
+  ggplot(aes(y = fct_reorder(Waterbody_name, rmse), x = rmse)) +
+  geom_point() +
+  facet_wrap(~season) +
+  theme_bw() +
+  theme(axis.title.y = element_blank(), legend.position = "bottom") +
+  labs(x = "RMSE", title = "Mean Daily Stream Temperature BRT Models")
+
+ggsave("output/dailyMean_brt_rmse.jpeg")
+  
+```
+
+```{r test gbm}
+
+gtest <- temp_trim_mn2 %>%
+  ungroup() %>% 
+  mutate(week = week(sampleDate),
+         season = case_when(week < 30 ~ "spring",
+                            TRUE ~ "fall")) %>% 
+  filter(grepl("Rapids", SiteID), season == "spring") %>% 
+  gbm(meanDT ~ airDT_lag + yday + discharge + mean_swe, 
+      interaction.depth = 3, cv.folds = 10, n.trees = 1000, data = .,
+      shrinkage = .01)
+
+plot.gbm(gtest, i.var = 4)
+
+gbm.perf(gtest, method = "cv")
+
+#for getting cv rmse
+gtest$cv.fitted
+
+me_grid <- data.frame(x = as.numeric(), y = as.numeric())
+for(i in 1:4) {
+  out <- plot.gbm(gtest, i.var = i, return.grid = TRUE)
+  out <- out %>% 
+    mutate(var = names(out)[1]) 
+  names(out)[1] <- "x"
+  me_grid <- bind_rows(me_grid, out)
+}
+
+me_grid %>% 
+  ggplot(aes(x = x, y = y)) +
+  geom_line() +
+  facet_wrap(~var, scales = "free")
+
+```
+
+
+
+
+```{r brt cv error}
+
+
+
+brt_mean_cv_rmse <- bind_rows(
+  bind_cols(
+    tempMean_brt %>% 
+      unnest(cv_preds_sp) %>% 
+      select(SiteID, cv_preds_sp),
+    tempMean_brt %>% 
+      unnest(data) %>%
+      filter(season == "spring") %>% 
+      select(meanDT, season)
+    ) %>% 
+    rename(cv_preds = cv_preds_sp),
+  bind_cols(
+    tempMean_brt %>% 
+      unnest(cv_preds_fall) %>% 
+      select(SiteID, cv_preds_fall),
+    tempMean_brt %>% 
+      unnest(data) %>%
+      filter(season == "fall") %>% 
+      select(meanDT, season)
+    ) %>% 
+    rename(cv_preds = cv_preds_fall)
+) %>% 
+  group_by(SiteID, season) %>% 
+  summarize(rmspe = sqrt(mean((meanDT - cv_preds)^2)),
+            cor = cor(meanDT, cv_preds))
+
+brt_mean_cv_rmse_noseas <- bind_rows(
+  bind_cols(
+    tempMean_brt %>% 
+      unnest(cv_preds_sp) %>% 
+      select(SiteID, cv_preds_sp),
+    tempMean_brt %>% 
+      unnest(data) %>%
+      filter(season == "spring") %>% 
+      select(meanDT, season)
+    ) %>% 
+    rename(cv_preds = cv_preds_sp),
+  bind_cols(
+    tempMean_brt %>% 
+      unnest(cv_preds_fall) %>% 
+      select(SiteID, cv_preds_fall),
+    tempMean_brt %>% 
+      unnest(data) %>%
+      filter(season == "fall") %>% 
+      select(meanDT, season)
+    ) %>% 
+    rename(cv_preds = cv_preds_fall)
+) %>% 
+  group_by(SiteID) %>% 
+  summarize(rmspe = sqrt(mean((meanDT - cv_preds)^2)),
+            cor = cor(meanDT, cv_preds))
+
+
+brt_mean_cv_rmse %>% 
+  ungroup() %>% 
+  # group_by(season) %>% 
+  summarize(mean(rmspe),
+            mean(cor))
+
+left_join(brt_mean_cv_rmse, temp_md %>% select(SiteID, Waterbody_name)) %>% 
+  left_join(brt_mean_rmse) %>% 
+  pivot_longer(cols = c(rmse, rmspe)) %>% 
+  mutate(season = factor(season, levels = c("spring", "fall"))) %>% 
+  ggplot(aes(y = fct_reorder(Waterbody_name,  value), x = value, color = name)) +
+  geom_point() +
+  facet_wrap(~season) +
+  theme_bw() +
+  theme(axis.title.y = element_blank(), legend.position = "bottom") +
+  labs(x = "Prediction Error", title = "Mean Daily Stream Temperature BRT Models",
+       color = "")
+
+ggsave("output/dailyMean_brt_rmse.jpeg")
+  
+brt_mean_cv_rmse %>% 
+  group_by(season) %>% 
+  summarize(mean(rmspe),
+            sd(rmspe))
+```
+
+```{r boxplot of LR and BRT rmse and r}
+
+left_join(dailyMean_rmse %>% rename(rmse_lr = rmse, cor_lr = cor_op),
+          brt_mean_cv_rmse_noseas %>% rename(rmse_brt = rmspe, cor_brt = cor)) %>% 
+  pivot_longer(-SiteID, values_to = "Value") %>% 
+  mutate(stat_type = case_when(grepl("rmse", name) ~ "RMSE (\u00b0C)",
+                               grepl("cor", name) ~ "Correlation (r)"),
+         model = case_when(grepl("brt", name) ~ "BRT",
+                           TRUE ~ "Linear Regression")) %>% 
+  ggplot(aes(y = Value, x = fct_reorder(model, Value))) +
+    geom_boxplot() +
+  facet_wrap(~stat_type, scales = "free_y", ncol = 2) +
+  theme_bw() +
+  theme(axis.title.x = element_blank(), text = element_text(size = 16),
+        strip.text = ggtext::element_markdown()) 
+
+ggsave("output/boxplots of LR and BRT summary stats.jpeg", width = 6, height = 4)
+       
+
+```
+
+
+
+
+```{r brt predictions plot for chena}
+
+brt_mean_preds <- bind_rows(
+  bind_cols(
+    tempMean_brt %>% 
+      unnest(pred_sp1) %>% 
+      select(SiteID, pred_sp1),
+    tempMean_brt %>% 
+      unnest(cv_preds_sp) %>% 
+      select(cv_preds_sp),
+    tempMean_brt %>% 
+      unnest(data) %>%
+      filter(season == "spring") %>% 
+      select(meanDT, season, yday, sampleYear)
+    ) %>% 
+    rename(preds = pred_sp1,
+           cv_preds = cv_preds_sp),
+  bind_cols(
+    tempMean_brt %>% 
+      unnest(pred_fall1) %>% 
+      select(SiteID, pred_fall1),
+    tempMean_brt %>% 
+      unnest(cv_preds_fall) %>% 
+      select(cv_preds_fall),
+    tempMean_brt %>% 
+      unnest(data) %>%
+      filter(season == "fall") %>% 
+      select(meanDT, season, yday, sampleYear)
+    ) %>% 
+    rename(preds = pred_fall1,
+           cv_preds = cv_preds_fall))
+
+
+left_join(brt_mean_preds, temp_md %>% select(SiteID, Waterbody_name)) %>%  
+  filter(grepl("Chena", Waterbody_name)) %>% 
+  group_by(SiteID, sampleYear) %>%
+  complete(yday = 120:275) %>%
+  pivot_longer(cols = c(meanDT, preds, cv_preds)) %>% 
+  mutate(name = factor(name, levels = c("preds", "cv_preds", "meanDT"),
+                       labels = c("Predictions", "Cross-Validated Predictions", "Daily Mean ST"))) %>% 
+  ggplot(aes(x = yday, y = value, color = name)) +
+  geom_line() +
+  facet_wrap(~sampleYear) +
+  labs(x = "Day of Year", y = "Stream Temperature", color = "", title = "Daily Mean ST and Predictions from BRT") +
+  theme_bw() +
+  theme(legend.position = "bottom")
+
+ggsave("output/dailyMean_brt_Chena.jpeg")
+
+
+#plot for one complete years
+left_join(brt_mean_preds, temp_md %>% select(SiteID, Waterbody_name)) %>%  
+  filter(grepl("Chena", Waterbody_name), sampleYear %in% c(2016)) %>% 
+  group_by(SiteID, sampleYear) %>%
+  complete(yday = 120:275) %>%
+  pivot_longer(cols = c(meanDT, preds, cv_preds)) %>% 
+  mutate(name = factor(name, levels = c("meanDT", "preds", "cv_preds"),
+                       labels = c("Observed", "Predicted", "CV Predicted"))) %>% 
+  ggplot(aes(x = yday, y = value, color = name)) +
+  geom_line(aes(size = name)) +
+  scale_color_manual(values = c("#00BFC4", "#F8766D", "#7CAE00")) +
+  scale_size_manual(values = c(0.5, 0.2,0.2)) +
+  facet_wrap(~sampleYear) +
+  labs(x = "Day of Year", y = "Stream Temperature (°C)", color = "") +
+  theme_bw() +
+  theme(legend.position = "bottom", text = element_text(size = 16)) +
+  guides(size = "none")
+
+ggsave("output/dailyMean_brt_Chena_2016.jpeg", width = 6.5, height = 5)
+```
+
+
+
+```{r brt marginal effects}
+tempMean_brt %>% names()
+
+sites <- tempMean_brt %>% pull(SiteID)
+
+brt_margEffects_plot <- function(model, no_vars = 4) {
+  me_grid <- data.frame(x = as.numeric(), y = as.numeric())
+  for(i in 1:no_vars) {
+    out <- plot.gbm(model, i.var = i, return.grid = TRUE, n.trees = 300)
+    out <- out %>% 
+      mutate(var = names(out)[1]) 
+    names(out)[1] <- "x"
+    me_grid <- bind_rows(me_grid, out)
+  }  
+  p1 <- me_grid %>% 
+    ggplot(aes(x = x, y = y)) + 
+    geom_line() +
+    facet_wrap(~var, scales = "free") 
+  print(p1)
+}
+
+#this works, but I want to pass a data frame so I can use the siteid as well
+lapply(tempMean_brt %>% pull(fit_sp1), 
+       function(model) brt_margEffects_plot(model, 4))
+
+lapply(tempMean_brt %>% pull(fit_fall1), 
+       function(model) brt_margEffects_plot(model, 4))
+
+
+test <- tempMean_brt %>% filter(grepl("Rapids", SiteID)) %>% pull(fit_sp1)
+brt_margEffects_plot(test[[1]], 4)
+plot.gbm(test[[1]], i.var = 1)
+
+
+
+```
+
+```{r regression and brt predictions for chena}
+
+left_join(brt_mean_preds, temp_md %>% select(SiteID, Waterbody_name)) %>%  
+  filter(grepl("Chena", Waterbody_name)) %>% 
+  left_join(dailyMean_preds %>% filter(grepl("Chena", SiteID))) %>% 
+  select(SiteID, cv_preds, meanDT, .fitted, yday, sampleYear) %>% 
+  group_by(SiteID, sampleYear) %>%
+  complete(yday = 120:275) %>%
+  filter(sampleYear %in% 2014:2017) %>% 
+  pivot_longer(cols = c(meanDT, .fitted, cv_preds)) %>% 
+  mutate(name = factor(name, levels = c("meanDT", "cv_preds", ".fitted"),
+                       labels = c("Daily Mean ST", "BRT", "Linear Model"))) %>%
+  ggplot(aes(x = yday, y = value, color = name, linetype = name)) +
+  geom_line() +
+  scale_linetype_manual(values = c("solid", "dashed", "dashed")) +
+  facet_wrap(~sampleYear) +
+  labs(x = "Day of Year", y = "Stream Temperature", color = "", title = "Chena River Daily Mean Stream Temperatures") +
+  theme_bw() +
+  theme(legend.position = "bottom", text = element_text(size = 18)) +
+  guides(linetype = "none")
+
+left_join(brt_mean_preds, temp_md %>% select(SiteID, Waterbody_name)) %>%  
+  filter(grepl("Chena", Waterbody_name)) %>% 
+  left_join(dailyMean_preds %>% filter(grepl("Chena", SiteID))) %>% 
+  select(SiteID, cv_preds, meanDT, .fitted, yday, sampleYear) %>% 
+  group_by(SiteID, sampleYear) %>%
+  complete(yday = 120:275) %>%
+  filter(sampleYear %in% 2014:2017) %>% 
+  pivot_longer(cols = c(meanDT, .fitted, cv_preds)) %>% 
+  mutate(name = factor(name, levels = c("meanDT", "cv_preds", ".fitted"),
+                       labels = c("Daily Mean ST", "BRT", "Linear Regression"))) %>%
+  ggplot(aes(x = yday, y = value, color = name, size = name)) +
+  geom_line() +
+  scale_size_manual(values = c(0.8, 0.3, 0.3)) +
+  scale_color_manual(values = c("black", "red", "blue")) +
+  facet_wrap(~sampleYear) +
+  labs(x = "Day of Year", y = "Stream Temperature", color = "", title = "Chena River Daily Mean Stream Temperatures") +
+  theme_bw() +
+  theme(legend.position = "bottom", text = element_text(size = 18)) +
+  guides(size = "none")
+
+ggsave("output/Chena ST plot.jpeg", width = 10, height = 7)
+
+```
+
+
+
+```{r chena max temp comparison}
+
+maxTemp_comparison <- left_join(brt_mean_preds, temp_md %>% select(SiteID, Waterbody_name)) %>%  
+  left_join(dailyMean_preds) %>% 
+  select(SiteID, cv_preds, meanDT, .fitted, yday, sampleYear) %>% 
+  pivot_longer(cols = c(meanDT, .fitted, cv_preds)) %>% 
+  mutate(name = factor(name, levels = c("meanDT", "cv_preds", ".fitted"),
+                       labels = c("Daily Mean ST", "BRT", "Linear Model"))) %>%
+  group_by(SiteID, sampleYear, name) %>%
+  summarize(max_mnDT = max(value)) %>%
+  pivot_wider(names_from = name, values_from = max_mnDT) 
+
+
+
+c1 <- maxTemp_comparison %>% 
+  filter(grepl("Chena", SiteID)) %>% 
+  ggplot() + 
+  geom_point(aes(y = `Daily Mean ST`, x = `Linear Model`, color = sampleYear)) +
+  geom_point(aes(x = `Daily Mean ST`, y = `Linear Model`), alpha = 0) +
+  geom_abline(aes(intercept = 0, slope = 1), show.legend = FALSE) +
+  stat_cor(aes(y = `Daily Mean ST`, x = `Linear Model`, color = sampleYear), 
+           p.accuracy = 0.001, r.accuracy = 0.01, size = 5) +
+  labs(y = "Observed Temperature", x = "Linear Model", color = "Year") +
+  theme_bw() +
+  theme(text = element_text(size = 18)) 
+
+c2 <- maxTemp_comparison %>% 
+  filter(grepl("Chena", SiteID)) %>% 
+  ggplot() + 
+  geom_point(aes(y = `Daily Mean ST`, x = BRT, color = sampleYear)) +
+  geom_point(aes(x = `Daily Mean ST`, y = BRT), alpha = 0) +
+  geom_abline(aes(intercept = 0, slope = 1), show.legend = FALSE) +
+  stat_cor(aes(y = `Daily Mean ST`, x = BRT, color = sampleYear), 
+           p.accuracy = 0.001, r.accuracy = 0.01, size = 5) +
+  labs(y = "Observed Temperature", x = "BRT", color = "Year") +
+  theme_bw() +
+  theme(text = element_text(size = 18), axis.title.y = element_blank()) 
+
+c3 <- c1 + c2 +
+  plot_annotation(title = "Annual Maximum Stream Temperature - Chena River") +
+  plot_layout(guides = "collect") &
+  theme(plot.tag = element_text(size = 18),
+        text = element_text(size = 18))
+
+c3
+ggsave("output/Max ST comparison chena.jpeg", plot = c3, width = 10, height = 6)
+```
+
+
+```{r max temp comparison - more sites}
+
+rmse_label <- maxTemp_comparison %>% 
+  ungroup() %>% 
+  mutate(brt_resid = BRT - `Daily Mean ST`,
+         lr_resid = `Linear Model` - `Daily Mean ST`) %>% 
+  summarize(brt_rmse = sqrt(mean(brt_resid^2)) %>% round(., 2),
+            lr_rmse = sqrt(mean(lr_resid^2)) %>% round(., 2))
+
+c1 <- maxTemp_comparison %>% 
+  # ungroup() %>% distinct(SiteID)
+  # filter(grepl("Chena|Salcha|Rapids|Blind|Teslin|Andreaf|Tak|Tul|Tat", SiteID)) %>% 
+  ggplot() + 
+  geom_point(aes(y = `Daily Mean ST`, x = `Linear Model`, color = SiteID)) +
+  geom_point(aes(x = `Daily Mean ST`, y = `Linear Model`), alpha = 0) +
+  geom_abline(aes(intercept = 0, slope = 1), show.legend = FALSE) +
+  stat_cor(aes(y = `Daily Mean ST`, x = `Linear Model`), 
+           p.accuracy = 0.001, r.accuracy = 0.01, size = 5) +
+  geom_text(aes(x = 8, y = 22, label = paste0("RMSE = ", rmse_label$lr_rmse)), size = 5, hjust = 0) +
+  labs(y = "Observed Temperature", x = "Linear Model", color = "Year") +
+  theme_bw() +
+  theme(text = element_text(size = 18)) +
+  guides(color = "none")
+
+c2 <- maxTemp_comparison %>% 
+  # filter(grepl("Chena|Salcha|Rapids|Blind|Teslin|Andreaf|Tak|Tul|Tat", SiteID)) %>% 
+  ggplot() + 
+  geom_point(aes(y = `Daily Mean ST`, x = BRT, color = SiteID)) +
+  geom_point(aes(x = `Daily Mean ST`, y = BRT), alpha = 0) +
+  geom_abline(aes(intercept = 0, slope = 1), show.legend = FALSE) +
+  stat_cor(aes(y = `Daily Mean ST`, x = BRT), 
+           p.accuracy = 0.001, r.accuracy = 0.01, size = 5) +
+  geom_text(aes(x = 8, y = 22, label = paste0("RMSE = ", rmse_label$brt_rmse)), size = 5, hjust = 0) +
+  labs(y = "Observed Temperature", x = "BRT", color = "Year") +
+  theme_bw() +
+  theme(text = element_text(size = 18), axis.title.y = element_blank()) +
+  guides(color = "none")
+
+c3 <- c1 + c2 +
+  plot_annotation(title = "Annual Maximum Stream Temperature (33 sites)") +
+  plot_layout(guides = "collect") &
+  theme(plot.tag = element_text(size = 18),
+        text = element_text(size = 18))
+
+c3
+ggsave("output/Max ST comparison.jpeg", plot = c3, width = 10, height = 6)
+```
+
+## BRT model for daily mean without swe
+
+```{r brt models without swe}
+
+temp_trim_mn2 %>% 
+  ungroup() %>% 
+  distinct(SiteID, sampleYear) %>% 
+  count(SiteID)
+  
+#Note, this first run takes hours so just adding to it below and saving.
+tempMean_brt_noswe <- temp_trim_mn2 %>%
+  ungroup() %>% 
+  mutate(week = week(sampleDate),
+         season = case_when(week < 30 ~ "spring",
+                            TRUE ~ "fall")) %>% 
+  filter(!is.na(meanDT)) %>% #ok since we have lags already calculated, this would only be internal nas within a time series
+  nest(data = -SiteID) %>%
+  mutate(fit_sp1 = map(data, ~gbm(meanDT ~ airDT_lag + yday + discharge, 
+                                  interaction.depth = 3, cv.folds = 10, n.trees = 300,
+                                  data = .x %>% filter(season == "spring"))),
+         fit_fall1 = map(data, ~gbm(meanDT ~ airDT_lag + yday + discharge, 
+                                  interaction.depth = 3, cv.folds = 10, n.trees = 300,
+                                  data = .x %>% filter(season == "fall"))),
+         summ_sp1 = map(fit_sp1, summary),
+         pred_sp1 = map(fit_sp1, predict))
+
+tempMean_brt_noswe <- tempMean_brt_noswe %>% 
+  mutate(summ_fall1 = map(fit_fall1, summary),
+         pred_fall1 = map(fit_fall1, predict),
+         cv_preds_sp = map(fit_sp1, pluck("cv.fitted")),
+         cv_preds_fall = map(fit_fall1, pluck("cv.fitted"))) 
+
+# saveRDS(tempMean_brt_noswe, "output/dailyMean_brtModels_noswe.rds")
+# tempMean_brt_noswe <- readRDS("output/dailyMean_brtModels_noswe.rds")
+
+
+```
+
+```{r variable importance no swe}
+
+
+bind_rows(tempMean_brt_noswe %>% 
+            unnest(summ_sp1) %>%
+            mutate(season = "Spring") %>% 
+            select(SiteID, var, rel.inf, season),
+          tempMean_brt_noswe %>% 
+            unnest(summ_fall1) %>%
+            mutate(season = "Fall") %>% 
+            select(SiteID, var, rel.inf, season)) %>% 
+  mutate(seasonf = factor(season, levels = c("Spring", "Fall")),
+         covf = factor(var, levels = c("yday", "airDT_lag", "discharge"))) %>% 
+  left_join(temp_md %>% select(SiteID, Waterbody_name)) %>% 
+  ggplot(aes(y = Waterbody_name, x = rel.inf, fill = covf)) +
+  geom_col(position = position_stack(reverse = TRUE)) +
+  facet_wrap(~seasonf) +
+  theme_bw() +
+  theme(legend.position = "bottom", axis.title.y = element_blank()) +
+  labs(fill = "Covariate", x = "Relative Influence",
+       title = "Mean Daily BRT Models")
+
+# ggsave("output/dailyMean_brt_relinf.jpeg")
+
+```
+
+
+
+```{r rmse no swe}
+
+brt_mean_rmse_noswe <- bind_rows(
+  bind_cols(
+    tempMean_brt_noswe %>% 
+      unnest(pred_sp1) %>% 
+      select(SiteID, pred_sp1),
+    tempMean_brt_noswe %>% 
+      unnest(data) %>%
+      filter(season == "spring") %>% 
+      select(meanDT, season)
+    ) %>% 
+    rename(preds = pred_sp1),
+  bind_cols(
+    tempMean_brt_noswe %>% 
+      unnest(pred_fall1) %>% 
+      select(SiteID, pred_fall1),
+    tempMean_brt_noswe %>% 
+      unnest(data) %>%
+      filter(season == "fall") %>% 
+      select(meanDT, season)
+    ) %>% 
+    rename(preds = pred_fall1)
+) %>% 
+  group_by(SiteID, season) %>% 
+  summarize(rmse = sqrt(mean((meanDT - preds)^2)))
+
+brt_mean_rmse_noswe %>% 
+  group_by(season) %>% 
+  summarize(mean(rmse))
+
+
+left_join(brt_mean_rmse_noswe, temp_md %>% select(SiteID, Waterbody_name)) %>% 
+  mutate(season = factor(season, levels = c("spring", "fall"))) %>% 
+  ggplot(aes(y = fct_reorder(Waterbody_name, rmse), x = rmse)) +
+  geom_point() +
+  facet_wrap(~season) +
+  theme_bw() +
+  theme(axis.title.y = element_blank(), legend.position = "bottom") +
+  labs(x = "RMSE", title = "Mean Daily Stream Temperature BRT Models")
+
+# ggsave("output/dailyMean_brt_rmse.jpeg")
+  
+```
+
+
+```{r cv error no swe}
+
+
+
+brt_mean_cv_rmse_noswe <- bind_rows(
+  bind_cols(
+    tempMean_brt_noswe %>% 
+      unnest(cv_preds_sp) %>% 
+      select(SiteID, cv_preds_sp),
+    tempMean_brt_noswe %>% 
+      unnest(data) %>%
+      filter(season == "spring") %>% 
+      select(meanDT, season)
+    ) %>% 
+    rename(cv_preds = cv_preds_sp),
+  bind_cols(
+    tempMean_brt_noswe %>% 
+      unnest(cv_preds_fall) %>% 
+      select(SiteID, cv_preds_fall),
+    tempMean_brt_noswe %>% 
+      unnest(data) %>%
+      filter(season == "fall") %>% 
+      select(meanDT, season)
+    ) %>% 
+    rename(cv_preds = cv_preds_fall)
+) %>% 
+  group_by(SiteID, season) %>% 
+  summarize(rmspe = sqrt(mean((meanDT - cv_preds)^2)))
+
+
+brt_mean_cv_rmse_noswe %>% 
+  group_by(season) %>% 
+  summarize(mean(rmspe))
+
+left_join(brt_mean_cv_rmse_noswe, temp_md %>% select(SiteID, Waterbody_name)) %>% 
+  left_join(brt_mean_rmse_noswe) %>% 
+  pivot_longer(cols = c(rmse, rmspe)) %>% 
+  mutate(season = factor(season, levels = c("spring", "fall"))) %>% 
+  ggplot(aes(y = fct_reorder(Waterbody_name,  value), x = value, color = name)) +
+  geom_point() +
+  facet_wrap(~season) +
+  theme_bw() +
+  theme(axis.title.y = element_blank(), legend.position = "bottom") +
+  labs(x = "Prediction Error", title = "Mean Daily Stream Temperature BRT Models",
+       color = "")
+
+# ggsave("output/dailyMean_brt_rmse.jpeg")
+  
+brt_mean_cv_rmse %>% 
+  group_by(season) %>% 
+  summarize(mean(rmspe),
+            sd(rmspe))
+```
+

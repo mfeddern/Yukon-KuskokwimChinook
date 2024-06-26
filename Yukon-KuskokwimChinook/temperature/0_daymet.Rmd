@@ -1,0 +1,65 @@
+---
+title: "data_Air_Temperatures"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+library(sf)
+library(zonalDaymet)
+library(maptools)
+library(sp)
+library(rgdal)
+library(raster)
+library(ncdf4)
+library(tictoc)
+library(tidyverse)
+
+# if(!require(devtools)){install.packages("devtools")}
+# devtools::install_github("bluegreen-labs/daymetr")
+library("daymetr")
+```
+
+
+This script is for processing DAYMET air temperatures for the DFA analysis. Possible packages include daymetr, zonalDaymet or spatialEco.
+
+Note: catchments are almost all < 1 km^2 in area so averaging daymet over catchments is not needed. Extracted daymet air temperatures by site using daymetr library below.
+
+(copied from AKSSF repo)
+
+# Get air temperatures by sites
+
+Get locations (lat/long) for sites from metadata file and save as csv for use with daymetr download function.
+
+```{r read in site locations and save csv}
+md <- readRDS("data/final_data/combined_data/temp_md.rds")
+
+write.csv(md %>% distinct(SiteID, Latitude, Longitude), file = paste0("data/sites", Sys.Date(), ".csv"),
+          row.names = FALSE)
+```
+
+
+Download daymet data for 20 years (most data after 2000) and all sites.
+
+```{r daymet for all sites}
+dm_batch <- download_daymet_batch(file_location = "data/sites2022-04-05.csv",
+                      start = 2000,
+                      end = 2020,
+                      simplify = TRUE,
+                      silent = TRUE)
+
+
+write_csv(dm_batch, "data/daymet/temp_site_daymet.csv")
+
+dm_batch %>% 
+  distinct(site, measurement)
+dm_batch %>% 
+  distinct(site)
+dm_batch %>% 
+  distinct(measurement)
+
+
+
+```
+

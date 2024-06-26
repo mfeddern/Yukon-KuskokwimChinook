@@ -1,0 +1,526 @@
+---
+title: "0_discharge"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+
+library(tidyverse)
+library(tidyhydat) # library to Extract and Tidy Canadian 'Hydrometric' Data
+library(dataRetrieval) # library to access usgs discharge data, parameter 00060
+
+library(lubridate)
+library(broom)
+library(sf)
+library(ggpubr)
+library(zoo)
+
+```
+
+
+
+
+
+# Study area
+
+```{r}
+ayk_sa <- st_read(dsn = "W:/GIS/AYK_Chinook/AYK_Chinook.gdb", layer = "study_area")
+
+st_crs(ayk_sa)
+```
+
+
+# USGS 
+
+## Create metadata for study area
+
+Spatial extract of discharge using study area
+
+First filter from AK down to AYK study area.
+Read in all sites with daily values for AK and discharge. Convert to an SF object.
+
+Note: 00060 is daily discharge, may also want to query sites with peak flow statistics.
+
+```{r usgs discharge md for AK}
+usgs_flow <- whatNWISdata(stateCd = "AK", service = "dv", 
+                             parameterCd = c("00060"))
+
+usgs_flow <- usgs_flow %>% select(agency_cd:dec_long_va, huc_cd) %>% distinct()
+
+usgs_flow_sf <- st_as_sf(usgs_flow, coords = c("dec_long_va", "dec_lat_va"), crs = "WGS84")
+usgs_flow_alb <- st_transform(usgs_flow_sf, crs = 3338)
+
+ggplot() +
+  geom_sf(data = usgs_flow_alb)
+```
+
+
+```{r usgs flow md in study area}
+st_crs(ayk_sa) == st_crs(usgs_flow_alb)
+
+usgs_flow_sa <- st_intersection(usgs_flow_alb, ayk_sa)
+
+usgs_flow_wgs84 <- st_transform(usgs_flow_sa, crs = "wgs84")
+
+usgs_flow_md <- bind_cols(usgs_flow_wgs84, as.data.frame(st_coordinates(usgs_flow_wgs84))) %>% 
+  st_drop_geometry() %>% 
+  rename(SourceName = agency_cd,
+         Agency_ID = site_no,
+         Waterbody_name = station_nm,
+         Latitude = Y,
+         Longitude = X) %>% 
+  mutate(SiteID = paste0("usgs_", Agency_ID),
+         Parameter = "Discharge") %>% 
+  select(SourceName, SiteID, Agency_ID, Parameter, Waterbody_name, Latitude, Longitude)
+
+usgs_flow_md %>% 
+  arrange(Agency_ID, SiteID)
+```
+
+
+## Download data
+
+Note: download is taking forever and there are probably only a portion of sites we actually need data for. Filter on tmap first and then download. Could try to just download peakflow data.
+
+```{r usgs peakflow}
+usgs_peak_dat <- readNWISpeak(siteNumbers = usgs_flow_sa$site_no, asDateTime = FALSE, convertType = FALSE)
+
+usgs_peak_dat2 <- usgs_peak_dat %>% 
+  mutate(date = case_when(substr(peak_dt, 9, 10) == "00" ~ as.Date(gsub("00", "01", peak_dt), format = "%Y-%m-%d"),
+                          TRUE ~ as.Date(peak_dt, format = "%Y-%m-%d")),
+         units = "cfs",
+         year = year(date),
+         SiteID = paste0("usgs", site_no)) %>% 
+  rename(peak_flow = peak_va) %>% 
+  select(SiteID, date, peak_flow)
+
+usgs_peak_dat2 %>% 
+  count(SiteID)
+
+usgs_flow_sa$site_no
+```
+
+
+
+```{r usgs daily streamflow data}
+#only 00003 mean provided.
+usgs_flow_dat <- readNWISdv(siteNumbers = usgs_flow_sa$site_no, 
+                            parameterCd = "00060", statCd = c("00001", "00002", "00003"))
+
+#get list of approved codes 
+A_codes <- usgs_flow_dat %>% 
+  distinct(X_00060_00003_cd) %>% 
+  filter(grepl("A", X_00060_00003_cd)) %>% 
+  pull(X_00060_00003_cd)
+
+# 8 provisional codes
+usgs_flow_dat %>% 
+  filter(!(X_00060_00003_cd %in% A_codes)) %>% 
+  distinct(X_00060_00003_cd)
+
+# a lot of provisional data overall, this would be a lot to lose if we filter on A codes.
+usgs_flow_dat %>% 
+  count(site_no, X_00060_00003_cd %in% A_codes) %>% 
+  pivot_wider(names_from = `X_00060_00003_cd %in% A_codes`, values_from = n)
+
+#not filtering on just accepted data for now, the only other code is provisional, no rejected data.
+#remove nas
+#convert values from cfs to cms. cf/35.315 = cm
+usgs_flow_daily <- usgs_flow_dat %>% 
+  # filter(X_00010_00003_cd %in% A_codes) %>% 
+  rename(date = Date) %>% 
+  mutate(SiteID = paste0("usgs_", site_no),
+         mean_flow = X_00060_00003/35.315) %>% 
+  select(date, mean_flow, SiteID) %>% 
+  filter(!is.na(mean_flow))
+
+usgs_flow_daily %>% summary()
+```
+
+
+Make site names consistent with other datasets and save.
+
+```{r save usgs md and data}
+usgs_flow_md %>%
+  saveRDS(., file = "data/final_data/usgs_flow_md.rds")
+
+usgs_flow_daily %>% 
+  ungroup() %>% 
+  saveRDS(., file = "data/final_data/usgs_flow_dat.rds")
+  
+```
+
+
+
+  
+
+
+# Canada data
+
+Do this only once, 1GB database, but only way to get the data. Downloaded on 12/5/21. "Downloading version of HYDAT created on 2021-10-19." (Note this took < 30 s)
+
+```{r download hydat, eval = FALSE}
+
+download_hydat()
+
+```
+
+```{r sf of canadian flow sites}
+can_md <- hy_stations(prov_terr_state_loc = c("YT", "BC"))
+
+can_md
+
+can_flow_sf <- st_as_sf(can_md, coords = c("LONGITUDE", "LATITUDE"), crs = "WGS84")
+can_flow_alb <- st_transform(can_flow_sf, crs = 3338)
+
+ggplot() +
+  geom_sf(data = can_flow_alb)
+```
+
+
+```{r canadian flow sites in study area}
+
+can_flow_sa <- st_intersection(can_flow_alb, ayk_sa)
+
+can_flow_wgs84 <- st_transform(can_flow_sa, crs = "wgs84")
+
+can_flow_md <- bind_cols(can_flow_wgs84, as.data.frame(st_coordinates(can_flow_wgs84))) %>% 
+  st_drop_geometry() %>% 
+  mutate(SourceName = "ECCC") %>% 
+  rename(Agency_ID = STATION_NUMBER,
+         Waterbody_name = STATION_NAME,
+         Latitude = Y,
+         Longitude = X) %>% 
+  mutate(SiteID = paste0("eccc_", Agency_ID),
+         Parameter = "Discharge") %>% 
+  select(SourceName, SiteID, Agency_ID, Parameter, Waterbody_name, Latitude, Longitude)
+
+can_flow_md %>% 
+  arrange(Agency_ID, SiteID)
+
+ggplot() +
+  geom_sf(data = ayk_sa) +
+  geom_sf(data = usgs_flow_sa) +
+  geom_sf(data = can_flow_sa)
+```
+
+```{r canadian flow data}
+
+can_sites <- can_flow_sa %>% st_drop_geometry() %>% distinct(STATION_NUMBER) %>% pull(STATION_NUMBER)
+
+can_dat <- hy_daily_flows(station_number = can_sites)
+
+#format and remove nas. already in cms.
+can_dat2 <- can_dat %>% 
+  rename(date = Date,
+         mean_flow = Value) %>% 
+  mutate(SiteID = paste0("eccc_", STATION_NUMBER)) %>% 
+  select(date, mean_flow, SiteID) %>% 
+  filter(!is.na(mean_flow))
+
+```
+
+Liard or Peel rivers? These flow into the MacKenzie
+
+Checking out sites on major yukon rivers for representative flow regime.
+
+```{r eval = FALSE}
+
+can_flow_sa %>% st_drop_geometry() %>% filter(grepl("LIARD|PEEL", STATION_NAME))
+
+yk_hydro_sites <- can_flow_sa %>% 
+  st_drop_geometry() %>% 
+  filter(grepl("STEWARD|PELLY|TESLIN", STATION_NAME)) %>% 
+  select(STATION_NUMBER, STATION_NAME)
+
+can_med_flow <- can_dat %>% 
+  right_join(yk_hydro_sites) %>% 
+  filter(!is.na(Value)) %>% 
+  mutate(commonday = as.Date(paste0("2000-", format(Date, "%j")), "%Y-%j")) %>% 
+  group_by(STATION_NAME, commonday) %>% 
+  summarize(med_flow = median(Value))
+
+
+can_dat %>% 
+  right_join(yk_hydro_sites) %>%
+  filter(!is.na(Value)) %>% 
+  distinct(STATION_NAME, year = year(Date)) %>% 
+  count(STATION_NAME)
+
+can_dat %>% 
+  right_join(yk_hydro_sites) %>% 
+  filter(!is.na(Value)) %>% 
+  mutate(commonday = as.Date(paste0("2000-", format(Date, "%j")), "%Y-%j"),
+         year = year(Date)) %>%
+  ggplot() +
+  geom_line( aes(x = commonday, y = Value, group = year), color = "gray") +
+  geom_line(data = can_med_flow, aes(x = commonday, y = med_flow), color = "black", size = 1) +
+  scale_x_date(labels = function(x) format(x, "%d-%b")) +
+  facet_wrap(~STATION_NAME, scales = "free", labeller = label_wrap_gen(width = 20, multi_line = TRUE)) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  labs(y = bquote("Daily Streamflow "~(m^3/s)), x = "Day of Year")
+
+ggsave("output/daily_streamflow_6cansites.jpeg", width = 7.5, height = 7, units = "in")
+```
+
+
+```{r}
+library(ggmap)
+
+map <- get_googlemap("Whitehorse, Canada", zoom = 8, maptype = "terrain")
+
+ggmap(map) +
+  theme_void() +
+  ggtitle("terrain") +
+  geom_sf(data = can_flow_sa, inherit.aes = FALSE)
+
+a <- unlist(attr(map,"bb")[1, ])
+bb <- st_bbox(can_flow_sa)
+ggplot() + 
+  annotation_raster(map, xmin = a[2], xmax = a[4], ymin = a[1], ymax = a[3]) + xlim(c(bb[1], bb[3])) + ylim(c(bb[2], bb[4])) + 
+  geom_sf(data = can_flow_sa)
+
+```
+
+
+17 sites in the metadata file don't actually have data in the database, remove them here.
+
+```{r save canadian md and data}
+can_flow_md #86
+can_dat2 %>% distinct(SiteID) #69
+
+remove <- anti_join(can_flow_md, can_dat2 %>% distinct(SiteID))
+
+saveRDS(can_flow_md %>% anti_join(remove), file = "data/final_data/eccc_flow_md.rds")
+saveRDS(can_dat2, file = "data/final_data/eccc_flow_dat.rds")
+
+```
+
+
+
+# Create point file of sites with > 10 years of data
+
+Find streamflow sites with at least 10 years of data to validate the modeled streamflow and precipitation metrics. Use the May through November window since we are interested in both summer and fall streamflows.
+
+```{r}
+flow_md <- readRDS("data/final_data/combined_data/flow_md.rds")
+flow_dat <- readRDS("data/final_data/combined_data/flow_dat.rds") %>% 
+  rename(sampleDate = date)
+
+length(seq.Date(from = as.Date("2022-05-01"), to = as.Date("2022-11-30"), by = 1))
+
+# sites with 80% of days in August-November each year
+lt_flow_sites <- flow_dat %>%
+  filter(month(sampleDate) %in% 5:11, sampleYear > 1979) %>% 
+  count(SiteID, sampleYear) %>% 
+  filter(n > 0.8*214) %>% 
+  count(SiteID) %>% 
+  filter(n > 9) %>% 
+  select(SiteID) %>% 
+  left_join(flow_md)
+
+#3 sites with missing metadata that should be filled in.
+lt_flow_sites %>% filter(is.na(Latitude))
+
+miss_sites <- readNWISsite(siteNumbers = c("15320100", "15348000", "15356000")) 
+
+miss_sites <- tibble(Waterbody_name = miss_sites$station_nm,
+                     Agency_ID = miss_sites$site_no,
+                     Latitude = miss_sites$dec_lat_va,
+                     Longitude = miss_sites$dec_long_va,
+                     SourceName = "USGS",
+                     Parameter = "Discharge") %>% 
+  mutate(SiteID = paste0("usgs_", Agency_ID))
+
+
+lt_flow_sites <- lt_flow_sites %>% 
+  filter(!is.na(Latitude)) %>% 
+  bind_rows(miss_sites)
+
+summary(lt_flow_sites)
+
+# lt_flow_sites %>%
+#   write_csv("W:/GIS/AYK_Chinook/lt_flow_sites.csv")
+```
+
+Watersheds have been created for all 78 sites and they generally look good, falling nicely on merit hydro. Could pull the data for the sites to get the smallest sites as these are most likely to be misplaced or not on merit hydro for qa. Also smallest sites will likely be hard to link to Glofas so we won't be able to compare across products. Best way to QA the watersheds will be to compare the area to the mean flow. Yukon River at Eagle was on the wrong reach, tiny watershed, shifted over a bit to correct it and reran watershed script.
+
+```{r watershed area and mean flow}
+wtds <- st_read(dsn = "W:\\GIS\\AYK_Chinook\\AYK_Chinook.gdb", layer = "wtds_ltflow_merge")
+
+mnflow_area <- flow_dat %>% 
+  right_join(lt_flow_sites %>% select(SiteID, Waterbody_name)) %>%
+  left_join(wtds %>% st_drop_geometry() %>% select(SiteID, AREA_GEO)) %>% 
+  filter(month(sampleDate) %in% 5:11) %>% 
+  group_by(SiteID, Waterbody_name, AREA_GEO) %>% 
+  summarize(mn_flow = mean(mean_flow)) 
+
+mnflow_area %>% 
+  ggplot(aes(AREA_GEO, mn_flow)) +
+  geom_point() +
+  geom_smooth(method = "lm")
+
+lm_flow <- mnflow_area %>% 
+  lm(mn_flow ~ AREA_GEO, data = .) 
+summary(lm_flow)
+
+mnflow_area %>%
+  ungroup() %>% 
+  mutate(flow_resid = (resid(lm_flow))) %>%
+  arrange(desc(flow_resid)) #%>% 
+  ggplot(aes(AREA_GEO, flow_resid)) +
+  geom_point()
+  
+
+lm_flow %>% 
+  filter(mn_flow > 1000)
+```
+
+
+Smallest streams in major spawning areas are Barton Creek and Rodo River, both just a few catchments in size, ~3-6. Wtd area just under 400 km2. 
+
+Looks like some of these small streams should probably be dropped. Checking streams where area and mean flow diverge from surrounding sites. Lots of sites in Canada with small watershed area, but large predicted average flow. Many of these are glacial and/or lake outlets so that would make sense.
+
+* 15515060 marguerite creek, also one catchment in size, loc accurate
+* 15564879 slate creek, wrong location, should be 3 cats in size, probably below cutoff and can be dropped.
+* eccc 09aa007 lubbock river looks correct, could be good cutoff, right before tolovana.
+* 15519100 Tolovana River looks good.
+* eccc 09ad002 sydney creek correct.
+* eccc 09ag003 south big salmon river correct.
+* eccc 09ah005 drury creek correct.
+* 15511000 little  chena correct.
+* eccc 09eb003 indian river correct.
+* wann river correct.
+* lindeman creek correct.
+* tutshi river correct.
+* fantail river correct.
+
+Reviewed watersheds for all sites from smallest (86 km2) up to ~ 1000 km2. Also ordered by mean flow and looked for anomalous watershed areas. Good cutoff would be Tatalina river in Kuskokwim because 297 km2 so just a bit smaller than smallest watershed in Chinook sites analysis. Only found one error in watersheds larger than that for Slate Creek. Deleting 7 small watersheds from the wtd_ltflow_merge feature class along with Slate Creek  -- making a new fc called wtd_ltflow_merge2. Down to 70 streamflow sites for comparison.
+
+
+```{r}
+mnflow_area %>% 
+  arrange(AREA_GEO)
+
+mnflow_area %>% 
+  arrange(mn_flow)
+
+mnflow_area %>% 
+  filter(!grepl("SLATE", Waterbody_name), !AREA_GEO < 290) %>% 
+  arrange(AREA_GEO)
+```
+
+# LT flow sites - changes in hydrology
+
+This analysis was for atmospheric dynamics class.
+
+Calculate hydrologic indices for long term sites.
+
+```{r HI for lt sites}
+library(EflowStats)
+
+#assign water year so can filter on complete years. Function won't run on incomplete years.
+ltflow_dat <- flow_dat %>% 
+  right_join(lt_flow_sites %>% select(SiteID, Waterbody_name)) %>%
+  left_join(wtds %>% st_drop_geometry() %>% select(SiteID, AREA_GEO)) %>%
+  rename(Date = sampleDate) 
+
+ltflow_dat <- addWaterYear(ltflow_dat)  
+  
+incomplete_wy <- ltflow_dat %>% 
+  group_by(SiteID, waterYear) %>% 
+  mutate(wy_ct = n()) %>% 
+  filter(wy_ct < 365 & (waterYear %% 4 != 0) | wy_ct < 366 & (waterYear %% 4 == 0)) %>% 
+  distinct(SiteID, waterYear)
+
+ltflow_dat %>% 
+  anti_join(incomplete_wy) %>% 
+  distinct(SiteID, waterYear) %>% 
+  filter(waterYear > 1980) %>% 
+  count(SiteID) %>% 
+  arrange(n)
+
+ltflow_dat2 <- ltflow_dat %>% 
+  anti_join(incomplete_wy) %>% 
+  filter(waterYear > 1980)  
+  
+str(ltflow_dat2)
+
+ltflow_nested <- as.data.frame(ltflow_dat2) %>%
+  select(SiteID, Date, mean_flow) %>% 
+  group_nest(SiteID)  
+
+validate_data2 <- function(data) {
+  as.data.frame(data) %>% 
+  validate_data(x = ., yearType = "water")
+}
+
+validate_data2(ltflow_nested$data[[1]])
+
+ltflow_nested <- ltflow_nested %>% 
+  mutate(val_data = map(data, validate_data2)) 
+
+calc_allHIT2 <- function(data) {
+  calc_allHIT(x = data, yearType = "water", stats = c("calc_magLow", "calc_rateChange"))
+}
+
+ltflow_nested <- ltflow_nested %>% 
+  mutate(hit = map(val_data, calc_allHIT2))
+
+ltflow_nested %>%
+  select(SiteID, hit) %>% 
+  unnest(hit) %>% 
+  distinct(indice)
+
+#using indices to explore variation in low flows across gradient of permafrost cover
+saveRDS(ltflow_nested, "S:/Classes/Atmospheric Dynamics_Fall 2022/LT_flowsites_hydroinds.rds")
+```
+
+separate some sites into early and late periods to check changes over time rather than just as space-for-time analysis over permafrost gradient.
+
+```{r}
+ltflow_nested %>% 
+  filter(grepl("usgs", SiteID)) %>% 
+  select(SiteID, val_data) %>% 
+  unnest(val_data) %>% 
+  distinct(SiteID, year_val) %>%
+  count(SiteID) %>% 
+  arrange(desc(n))
+
+#10 sites that start 1981 and end 2021
+ltflow_10sites <- ltflow_nested %>% 
+  filter(grepl("usgs", SiteID)) %>% 
+  select(SiteID, val_data) %>% 
+  unnest(val_data) %>% 
+  distinct(SiteID, year_val) %>%
+  group_by(SiteID) %>% 
+  summarize(n = n(),
+            min_yr = min(year_val),
+            max_yr = max(year_val)) %>% 
+  arrange(desc(n)) %>% 
+  filter(n >= 36) %>% 
+  pull(SiteID)
+
+ltflow_nested2 <- ltflow_nested %>% 
+  filter(SiteID %in% ltflow_10sites) %>% 
+  select(SiteID, val_data) %>% 
+  unnest(val_data) %>% 
+  mutate(period = case_when(year_val < 1991 ~ "early",
+                   year_val > 2010 ~ "late")) %>% 
+  filter(!is.na(period)) %>% 
+  group_nest(SiteID, period) 
+
+
+ltflow_nested2 <- ltflow_nested2 %>% 
+  mutate(val_data = map(data, validate_data2)) %>% 
+  mutate(hit = map(val_data, calc_allHIT2))
+  
+#using indices to explore variation in low flows across early and late periods
+saveRDS(ltflow_nested2, "S:/Classes/Atmospheric Dynamics_Fall 2022/LT_flowsites_hydroinds_time.rds")
+
+
+```
+

@@ -1,0 +1,54 @@
+---
+title: "1_streamflow plots"
+output: html_document
+date: '2022-04-17'
+---
+
+```{r setup, include=FALSE}
+
+library(ggpubr)
+library(tidyverse)
+library(lubridate)
+library(zoo)
+library(gridExtra)
+
+#load streamflow data and md files, 'complete' dates here for plotting
+flow_md <- readRDS("data/final_data/combined_data/flow_md.rds")
+flow_dat <- readRDS("data/final_data/combined_data/flow_dat.rds") %>% 
+  rename(sampleDate = date)
+
+flow_plot <- left_join(flow_dat, flow_md %>% select(SiteID, Region, Waterbody_name)) %>% 
+  filter(!is.na(Region)) %>% 
+  group_by(SiteID, Region, Waterbody_name, sampleYear) %>% 
+  complete(sampleDate = as.Date(min(sampleDate):max(sampleDate), origin = "1970-01-01")) %>% 
+  filter(month(sampleDate) %in% 8:11)  %>% 
+  mutate(day = format(sampleDate, "%m-%d")) %>% 
+  ungroup()
+
+flow_mets <- flow_plot %>% 
+  filter(sampleYear > 2000) %>%
+  group_by(Region, SiteID, Waterbody_name, sampleYear) %>% 
+  summarize(max_flow = max(mean_flow, na.rm = TRUE)) %>%
+  group_by(Region, SiteID, Waterbody_name) %>% 
+  mutate(mx_flowsc = scale(max_flow)) %>% 
+  complete(sampleYear = 2000:2020)
+
+```
+
+
+
+```{r}
+flow_mets %>% 
+  ggplot(aes(x = sampleYear, y = mx_flowsc, color = Region, group = SiteID)) +
+  geom_line() +
+  # geom_point() +
+  # geom_hline(aes(yintercept = 18), linetype = 2) +
+  facet_wrap(~Region) +
+  theme_bw() +
+  theme(legend.position = "", text = element_text(size = 18)) +
+  labs(x = "Year", y = "Standardized Streamflow",
+       title = "Fall (ASON) Maximum Daily Streamflow")
+
+ggsave("output/Fall max streamflow.jpeg", width = 8, height = 5, units = "in")
+```
+

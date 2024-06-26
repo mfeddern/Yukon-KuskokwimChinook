@@ -1,0 +1,395 @@
+---
+title: "0_blm"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+    df_print: paged
+date: '2022-03-08'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(lubridate)
+library(plotly)
+library(leaflet)
+library(tmap)
+library(sf)
+library(hms)
+library(tidyverse)
+```
+
+
+# Unalakleet Tributaries: North and Old Woman
+
+North river temp and discharge from Merlyn Schelske. Merlyn also sent data for the Unalakleet mainstem, but we already have data from USGS and OSM for that river.
+
+```{r blm data}
+north_files <- list.files("S:\\Stream Temperature Data\\BLM\\North_River\\Hobo export", pattern = ".csv", full.names = TRUE)
+
+blm_dat <- map_df(north_files, function(x) read_csv(x, skip = 2, col_names = FALSE) %>% 
+                    mutate(file_name = basename(x)))
+
+#remove colums X4:X7
+apply(blm_dat, 2, function(x) sum(is.na(x)))
+nrow(blm_dat)
+
+blm_dat <- blm_dat %>% 
+  mutate(dt = parse_date_time(X2, orders = "mdyHMSp"),
+         sampleDate = as.Date(dt),
+         Temperature = X3,
+         Parameter = case_when(grepl("9942623|10977750|10139084|10211980", file_name) ~ "Water",
+                               grepl("10139075|10139078", file_name) ~ "Air"),
+         SiteID = case_when(grepl("10139084|10139075|10211980", file_name) ~ "blm_North",
+                          grepl("9942623|10139078|10977750", file_name) ~ "blm_Old_Woman")) %>% 
+  select(-(X1:X7)) 
+
+blm_dat %>% distinct(file_name, SiteID, Parameter)
+
+```
+
+Lat/longs on metadata sheets in stream temperature folder. Confirmed by checking locations in AKOATS and in online mapper.
+
+```{r blm metadata}
+
+64 + 0/60 + 32.4/3600 #north lat
+64.009
+160 + 29/60 + 37.9/3600 #north long
+-160.4939
+
+64 + 01/60 + 13.5/3600 #old woman lat
+64.02042 #close to entered lat on last row of 62.02048
+159 + 49/60 + 00.1/3600 #old woman long
+-159.8167 #entered long is 159.81717
+
+blm_md <- tibble(SiteID = c("blm_North", "blm_Old_Woman"),
+                   Agency_ID = c("North", "Old Woman"),
+                   Waterbody_name = c("North River", "Old Woman River"),
+                   SourceName = "BLM",	
+                   Latitude = c(64.009, 64.02042),
+                   Longitude = c(-160.4939, -159.8167),
+                   Parameter = "Temperature")
+
+
+
+```
+
+Check stream and air temperatures for each site.
+
+* blm_North - Not certain about warm temps in mid-July 2012, but notes say deployed July 3 and downloaded on July 27 so no indication those were air temps prior to deployment.
+* blm_Old_Woman - same problem with 2012, check against air temperatures, probably need to drop some data in July. In 2014, the daily variation flattens out starting July 21, possibly burial. Can check against air temps and see if that is helpful. 
+
+```{r interactive plots for qa}
+
+p1 <- blm_dat %>% 
+  filter(SiteID == "blm_North", Parameter == "Water") %>%  
+  complete(sampleDate = seq(min(sampleDate), max(sampleDate), by = 1)) %>% 
+  # filter(month(sampleDate) %in% 6:9) %>%
+  group_by(SiteID, sampleDate) %>% 
+  summarize(meanDT = mean(Temperature),
+            maxDT = max(Temperature),
+            minDT = min(Temperature)) %>% 
+  mutate(day = format(sampleDate, "%m-%d")) %>% 
+  ggplot(aes(x = as.Date(day, format = "%m-%d"))) +
+  geom_line(aes(y = meanDT)) +
+  # geom_point(aes(y = meanDT)) +
+  geom_line(aes(y = maxDT), color = "red") +
+  geom_line(aes(y = minDT), color = "blue") +
+  facet_wrap(~year(sampleDate))
+  
+ggplotly(p1)  
+  
+```
+
+Plot of North water and air shows that they track the same until 8/5/2012, remove data prior to that.
+
+```{r}
+p2 <- blm_dat %>% 
+  filter(SiteID == "blm_North") %>%  
+  complete(sampleDate = seq(min(sampleDate), max(sampleDate), by = 1)) %>% 
+  filter(month(sampleDate) %in% 6:9) %>%
+  group_by(SiteID, Parameter, sampleDate) %>% 
+  summarize(meanDT = mean(Temperature)) %>% 
+  mutate(day = format(sampleDate, "%m-%d")) %>% 
+  ggplot(aes(x = as.Date(day, format = "%m-%d"))) +
+  geom_line(aes(y = meanDT, color = Parameter)) +
+  facet_wrap(~year(sampleDate))
+
+ggplotly(p2)
+```
+
+Data to remove:
+
+* north prior to 8/5/2012
+* old woman burial starting 7/2/14 until end of year
+* old woman air temps in early 2012, clip anything before 7/17/2012
+
+
+```{r remove bad data}
+
+blm_dat2 <- blm_dat %>% 
+  filter(!(year(sampleDate) == 2014 & SiteID == "blm_Old_Woman" & sampleDate > as.Date("2014-07-02") & Parameter == "Water"),
+         !(year(sampleDate) == 2012 & SiteID == "blm_Old_Woman" & sampleDate < as.Date("2012-07-17") & Parameter == "Water"),
+         !(year(sampleDate) == 2012 & SiteID == "blm_North" & sampleDate < as.Date("2012-08-05") & Parameter == "Water"))
+         
+blm_dat2 %>% 
+  filter(SiteID == "blm_Old_Woman", Parameter == "Water") %>%  
+  complete(sampleDate = seq(min(sampleDate), max(sampleDate), by = 1)) %>% 
+  # filter(month(sampleDate) %in% 6:9) %>%
+  group_by(SiteID, sampleDate) %>% 
+  summarize(meanDT = mean(Temperature),
+            maxDT = max(Temperature),
+            minDT = min(Temperature)) %>% 
+  mutate(day = format(sampleDate, "%m-%d")) %>% 
+  ggplot(aes(x = as.Date(day, format = "%m-%d"))) +
+  geom_line(aes(y = meanDT)) +
+  scale_x_date(date_labels = "%b") +
+  # geom_point(aes(y = meanDT)) +
+  geom_line(aes(y = maxDT), color = "red") +
+  geom_line(aes(y = minDT), color = "blue") +
+  facet_wrap(~year(sampleDate))
+
+```
+
+Create a daily file.
+
+Looks like they are sometimes hourly and sometimes half hour. Use metadata table to determine dates where it switched.
+
+* North River: prior to 6/13/15 is 24; 6/13/15 through May 2016 is 48; no data from June 2016 to July 2017; August 2017 to end of time series in 2019 is 24.
+* Old Woman River: start through July 2013 is 24; August 2013 to 6/14/2014 is 48; 6/15/2014 to end would be 24 again.
+
+
+```{r create daily file}
+blm_intervals <- blm_dat2 %>% 
+  count(SiteID, Parameter, month = month(sampleDate), year = year(sampleDate), sampleDate, name = "count_perday") %>% 
+  count(SiteID, Parameter, month, year, count_perday, name = "count_peryear") %>%
+  arrange(SiteID, year, month, count_perday) %>% 
+  filter(count_peryear > 10, Parameter == "Water") 
+
+blm_daily <- blm_dat2 %>% 
+  mutate(count_perday = case_when(SiteID == "blm_North" & sampleDate <= as.Date("2015-06-13") ~ 24,
+                                  SiteID == "blm_North" & sampleDate > as.Date("2015-06-13") & sampleDate <= as.Date("2016-05-31") ~ 48,
+                                  SiteID == "blm_North" & sampleDate > as.Date("2016-06-01") ~ 24,
+                                  SiteID == "blm_Old_Woman" & sampleDate <= as.Date("2013-07-31") ~ 24,
+                                  SiteID == "blm_Old_Woman" & sampleDate > as.Date("2013-08-01") & sampleDate <= as.Date("2014-06-14") ~ 48,
+                                  SiteID == "blm_Old_Woman" & sampleDate > as.Date("2014-06-14") ~ 24)) %>% 
+  group_by(SiteID, sampleDate) %>% 
+  mutate(day_ct = n(),
+         day_per = day_ct/count_perday) %>% 
+  filter(day_per >= 0.9) %>%
+  summarize(meanDT = mean(Temperature),
+            maxDT = max(Temperature),
+            minDT = min(Temperature)) 
+
+#complete days filter
+nrow(blm_dat2 %>% distinct(SiteID, sampleDate)) - nrow(blm_daily) #4 dropped
+
+blm_daily %>% 
+  count(SiteID, year = year(sampleDate)) %>% 
+  pivot_wider(names_from = year, values_from = n)
+
+```
+
+
+
+# Tozitna River 
+
+temp and discharge from Dave Esse 
+
+Looks like Dave found old files from Carl that are from different sites. Different names on the files and lat/long inside some of them.
+
+* three different locations for what looks to be the "gage" site, not sure what is going on, ask Dave.
+
+
+```{r tozitna md}
+
+toz_files <- list.files("S:\\Stream Temperature Data\\BLM\\Tozitna", full.names = TRUE)
+
+toz_md <- tibble(file_name = basename(toz_files)) %>% 
+  mutate(Latitude = case_when(grepl("gage", file_name) ~ 65 + 29.114/60,
+                              grepl("TOZI", file_name) ~ 65 + 30.979/60,
+                              grepl("Hellbent", file_name) ~ 65 + 22.834/60,
+                              grepl("gauge", file_name) ~ 65 + 29.117/60,
+                              grepl("camp", file_name) ~ 65.51472), #same in two camp files, missing in third
+         Longitude = case_when(grepl("gage", file_name) ~ -152 - 0.394/60,
+                               grepl("TOZI", file_name) ~ -152 - 12.830/60,
+                               grepl("Hellbent", file_name) ~ -152 - 26.450/60,
+                               grepl("gauge", file_name) ~ -152 - 14.397/60,
+                               grepl("camp", file_name) ~ -152.20854),
+         SiteID = case_when(grepl("gage|TOZI|gauge", file_name) ~ "blm_Tozitna_gage",
+                            grepl("weir|Hellbent", file_name) ~ "blm_Tozitna_weir",
+                            grepl("camp", file_name) ~ "blm_Tozitna_camp"),
+         Waterbody_name = c("Tozitna River"),
+         SourceName = "BLM",	
+         Parameter = "Temperature")
+
+toz_md %>% arrange(SiteID)
+
+write_csv(toz_md, "toz_md.csv")
+
+```
+
+
+
+
+```{r map of sites, out.width = '100%'}
+
+toz_sf <- st_as_sf(toz_md %>% filter(!is.na(Latitude)), coords = c("Longitude", "Latitude"), crs = "wgs84")
+
+
+tmap_mode("view")
+
+sitemap <- tm_shape(toz_sf) +
+  tm_dots(id = "SiteID", size = 0.05, popup.vars = "file_name") +
+  tm_text("file_name", size = 1.5, shadow = TRUE, auto.placement = TRUE,
+          just = "bottom", remove.overlap = TRUE, clustering = TRUE, group = "Labels" ) +
+  tm_basemap(server = c(Topo = "Esri.WorldTopoMap", Imagery = "Esri.WorldImagery" )) +
+  # tm_shape(ayk_sa) +
+  # tm_borders() +
+  tmap_options(check.and.fix = TRUE)
+
+sitemap
+
+
+
+
+```
+
+
+Read in individually since they have different formats -- otherwise will take forever to fix all the times, which are very different.
+
+
+```{r toz data}
+toz_files
+
+toz1 <- read_excel(toz_files[1], col_types = c("date", "date", "numeric"), range = "A1:C1251") %>% 
+  rename(Temperature = 'Temp  C') %>% 
+  mutate(Time = as_hms(Time),
+         file_name = basename(toz_files[1]))
+
+toz2 <- read_excel(toz_files[2], col_types = c("date", "date", "numeric"), skip = 5) %>% 
+  rename(Temperature = 'Water Temp C') %>% 
+  mutate(Time = as_hms(Time),
+         file_name = basename(toz_files[2]))
+
+toz3 <- read_excel(toz_files[3], col_types = c("date", "date", "numeric", "skip"), skip = 4) %>% 
+  rename(Temperature = 'Water Temp C') %>% 
+  mutate(Time = as_hms(Time),
+         file_name = basename(toz_files[3]))
+
+toz4 <- read_delim(toz_files[4], delim = "\t", skip = 8, col_types = "ctn_") %>% 
+  mutate(Date = as.Date(Date, format = "%m/%d/%Y"),
+         file_name = basename(toz_files[4])) 
+colnames(toz4) <- c("Date", "Time", "Temperature", "file_name")
+toz4 <- toz4 %>% 
+  filter(!is.na(Date))
+
+toz5 <- read_excel(toz_files[5], skip = 7) %>% 
+  rename(Temperature = 'Temp ( C)') %>% 
+  mutate(Time = as_hms(substr(Time, 1, 8)),
+         file_name = basename(toz_files[5]))
+toz5 <- toz5 %>% 
+  mutate(Temperature = as.numeric(Temperature))
+
+toz6 <- read_excel(toz_files[6], range = "A8:C2219") %>% 
+  rename(Temperature = 'Temp ( C)') %>% 
+  mutate(Time = as_hms(substr(Time, 1, 8)),
+         file_name = basename(toz_files[6]))
+
+#toz5 and toz6 are the same data, just keep toz5
+full_join(toz5 %>% select(-file_name), toz6 %>% rename(temp2 = Temperature) %>% select(-file_name)) %>% 
+  mutate(diff = Temperature - temp2) %>% summary()
+
+toz7 <- read_excel(toz_files[7], skip = 6) %>% 
+  rename(Temperature = 'Temp ( C)') %>% 
+  mutate(Time = as_hms(substr(Time, 1, 8)),
+         Temperature = as.numeric(Temperature),
+         file_name = basename(toz_files[7]))
+
+toz8 <- read_excel(toz_files[8], skip = 6, col_names = c("Date", "Time", "Temperature", "drop")) %>% 
+  mutate(Time = as_hms(substr(Time, 1, 8)),
+         file_name = basename(toz_files[8])) %>% 
+  select(-drop)
+
+toz9 <- read_excel(toz_files[9], range = "A5:C1352") %>%
+  rename(Temperature = "Temp (c)") %>% 
+  mutate(Time = as_hms(Time),
+         file_name = basename(toz_files[9])) 
+
+toz10 <- read_excel(toz_files[10], range = "A5:C1255") %>%
+  rename(Temperature = "Temp  C") %>% 
+  mutate(Time = as_hms(Time),
+         file_name = basename(toz_files[10])) 
+
+toz_dat <- bind_rows(toz1, toz2, toz3, toz4, toz5, toz7, toz8, toz9, toz10)
+
+toz_dat <- left_join(toz_dat, toz_md %>% select(file_name, SiteID)) 
+```
+
+Review the site assignments. There are some duplicate data in here, but only for a couple of dates, possibly when loggers got changed out. Dave Esse confirmed that there were two gages and the bad longitudes not on the Tozitna are probably from the lower gage since the latitudes match. This means there are data for the primary (lower) gage from 2005-2008 and then one year of data from 2008-2009 for the upper gage, which is not when that gage was active. It seems more likely the temperature data are all from the lower gage. The sites were ~ 4 km apart with one major creek entering between them.
+
+```{r}
+
+toz_dat %>% distinct(SiteID)
+dups <- toz_dat %>% 
+  count(SiteID, Date, Time) %>% 
+  filter(n > 1)
+
+
+left_join(dups, toz_dat) #%>%  
+  group_by(Date, Time) %>% 
+  mutate(Diff = Temperature - lag(Temperature)) %>% 
+  summary()
+
+#email from Dave that there are two gage sites -- see time period for each file tied to a gage
+toz_dat %>% 
+  filter(grepl("gage", SiteID)) %>% 
+  group_by(file_name) %>% 
+  summarize(min(Date),
+            max(Date)) %>% 
+  left_join(toz_md %>% select(file_name, Latitude, Longitude))
+
+p1 <- toz_dat %>% 
+  filter(grepl("gage", SiteID)) %>% 
+  group_by(file_name, Date) %>% 
+  summarize(meanDT = mean(Temperature),
+            minDT = min(Temperature),
+            maxDT = max(Temperature)) %>% 
+  ggplot() +
+  geom_line(aes(x = Date, y = meanDT, color = file_name))
+
+ggplotly(p1)
+
+```
+
+
+
+
+
+
+```{r toz plots for qa}
+
+
+
+p1 <- blm_dat %>% 
+  filter(SiteID == "blm_North", Parameter == "Water") %>%  
+  complete(sampleDate = seq(min(sampleDate), max(sampleDate), by = 1)) %>% 
+  # filter(month(sampleDate) %in% 6:9) %>%
+  group_by(SiteID, sampleDate) %>% 
+  summarize(meanDT = mean(Temperature),
+            maxDT = max(Temperature),
+            minDT = min(Temperature)) %>% 
+  mutate(day = format(sampleDate, "%m-%d")) %>% 
+  ggplot(aes(x = as.Date(day, format = "%m-%d"))) +
+  geom_line(aes(y = meanDT)) +
+  # geom_point(aes(y = meanDT)) +
+  geom_line(aes(y = maxDT), color = "red") +
+  geom_line(aes(y = minDT), color = "blue") +
+  facet_wrap(~year(sampleDate))
+  
+ggplotly(p1)  
+  
+```
+

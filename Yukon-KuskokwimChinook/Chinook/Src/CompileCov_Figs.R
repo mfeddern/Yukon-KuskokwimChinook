@@ -64,7 +64,7 @@ SST_summer_north<-SST_summer_north%>%
   filter(Year >= yr_fst & Year <= yr_last)%>%
   select(EarlySummer_North)%>%
   mutate(year = Year-2)%>%
- ungroup()%>%
+  ungroup()%>%
   select(year, EarlySummer_North)%>%
   mutate(region2 = "Yukon")%>%
   rename(EarlySummer=EarlySummer_North)
@@ -75,7 +75,7 @@ SST_summer_south<-SST_summer_south%>%
   filter(Year >= yr_fst & Year <= yr_last)%>%
   select(EarlySummer_South)%>%
   mutate(year = Year-2)%>%
- ungroup()%>%
+  ungroup()%>%
   select(year, EarlySummer_South)%>%
   mutate(region2 = "Kuskokwim")%>%
   rename(EarlySummer=EarlySummer_South)
@@ -139,29 +139,29 @@ Tanana <-  breakupfull%>%filter(Site  == "Tanana River at Nenana")%>%
   dplyr::group_by(Year, Site) %>%
   summarise(day = as.numeric(mean(DOY)))%>%
   mutate(region = "Yukon (US)")
-  
-  Dawson <-  breakupfull%>%filter(Site  == "Yukon River at Dawson")%>%
+
+Dawson <-  breakupfull%>%filter(Site  == "Yukon River at Dawson")%>%
   select(c("DOY", "Site", "Year"))%>%
   dplyr::group_by(Year, Site) %>%
   summarise(day = as.numeric(mean(DOY)))%>%
   mutate(region = "Yukon (CA)")
-  
-  
-  Kuskokwim <-  breakupfull%>%filter(Site  == "Kuskokwim River at Bethel")%>%
+
+
+Kuskokwim <-  breakupfull%>%filter(Site  == "Kuskokwim River at Bethel")%>%
   select(c("DOY", "Site", "Year"))%>%
   dplyr::group_by(Year, Site) %>%
   summarise(day = as.numeric(mean(DOY)))%>%
   mutate(region = "Kuskokwim")
-  
-  
-  breakup2 <- Tanana %>% 
-    mutate(year=Year-2)%>%
-    bind_rows(Kuskokwim %>%mutate(year=Year-2))%>%
-    bind_rows(Dawson %>% mutate(year=Year-2))%>%
-    mutate(breakup2=day)%>%
-    select(year, region, breakup2)
-  breakup2 <-data.frame(breakup2)%>%
-    select(year, region, breakup2)
+
+
+breakup2 <- Tanana %>% 
+  mutate(year=Year-2)%>%
+  bind_rows(Kuskokwim %>%mutate(year=Year-2))%>%
+  bind_rows(Dawson %>% mutate(year=Year-2))%>%
+  mutate(breakup2=day)%>%
+  select(year, region, breakup2)
+breakup2 <-data.frame(breakup2)%>%
+  select(year, region, breakup2)
 
 
 pops_allMets<- readRDS("precipitation/output/pops_allMets.rds")
@@ -304,10 +304,10 @@ ggplot(data = unstand_cov,
            group=region))+
   #facet_wrap(.~covariate,scales='free', ncol = 3, labeller = label_wrap_gen(18) ) +
   geom_point(aes(col=region))+
-#  stat_poly_line() +
+  #  stat_poly_line() +
   stat_smooth(method = "lm",
-                        formula = y ~ x,
-                        geom = "smooth",aes(col=region))+
+              formula = y ~ x,
+              geom = "smooth",aes(col=region))+
   scale_y_continuous(name ="Max Daily Stream Temperature")+
   scale_x_continuous(name = "Breakup Date (JD)")+
   #ggtitle(thetas$Covar.Name, subtitle = thetas$Lifestage) +
@@ -352,7 +352,7 @@ SST_winter <-SST_winter%>%
   group_by(year)%>%
   summarise(winter_mean=mean(meansst))#calculating annual mean grouped by year across months
 SST_winter <-SST_winter%>%
-mutate(value = 
+  mutate(value = 
            (winter_mean-mean(SST_winter$winter_mean))/sd(SST_winter$winter_mean))%>% #standardizing
   mutate(covariate = 'Winter Sea Surface Temperature', region = 'Yukon (US)')%>%
   select(year, value, region,covariate)
@@ -651,10 +651,10 @@ cdd_rear_stand <- RiverStand(pops_allMets, 10, 39, 13)%>%
 
 
 unlag_cov<- bind_rows(SST_winter,marinecov,pollock_Biomass, IceExtent,pollock_Recruitment,IceRetreat,
-                       pink, chum, pinkchum, vwind, uwind, SST_summer, size,breakup2,maxq_spawn_stand,
-                       mean_swe_icu, mean_swe_rear,medq_rear_stand,
-                       mnprcp_rear_stand, maxDaily_migrate_stand, maxDaily_spawn_stand,
-                       cdd17_stand, cdd_rear_stand)
+                      pink, chum, pinkchum, vwind, uwind, SST_summer, size,breakup2,maxq_spawn_stand,
+                      mean_swe_icu, mean_swe_rear,medq_rear_stand,
+                      mnprcp_rear_stand, maxDaily_migrate_stand, maxDaily_spawn_stand,
+                      cdd17_stand, cdd_rear_stand)
 
 saveRDS(unlag_cov, file = "Chinook/Output/posteriors/unlagcov.rds")
 
@@ -664,7 +664,7 @@ colnames(full.dat.wide.cov)
 pop_assignments<- unique(full.dat.wide.cov%>%select(pop,region2,region))
 
 unlag_cov_corr<-merge(pop_assignments, SST_summer%>%rename(region2=region,summer_sst=value)%>%select(-covariate), by =c('region2'))%>%
-  merge(SST_winter_south, by=c('year'))%>%
+  merge(SST_winter%>%select(-covariate,-region)%>%rename(wintersst=value), by=c('year'))%>%
   merge(marinecov%>%rename(marinecov=value)%>%select(-covariate), by='year')%>%
   merge(IceExtent%>%rename(ICIA=value)%>%select(-covariate), by='year')%>%
   merge(size, by=c('region2','year'))%>%
@@ -681,6 +681,68 @@ unlag_cov_corr<-merge(pop_assignments, SST_summer%>%rename(region2=region,summer
   arrange(pop, year)
 
 
+
+panel.hist <- function(x, ...) {
+  usr <- par("usr")
+  on.exit(par(usr))
+  par(usr = c(usr[1:2], 0, 1.5))
+  his <- hist(x, plot = FALSE)
+  breaks <- his$breaks
+  nB <- length(breaks)
+  y <- his$counts
+  y <- y/max(y)
+  rect(breaks[-nB], 0, breaks[-1], y, col = rgb(0, 1, 1, alpha = 0.5), ...)
+  # lines(density(x), col = 2, lwd = 2) # Uncomment to add density lines
+}
+
+panel.cor <- function(x, y, digits = 2, prefix = "", cex.cor, ...) {
+  usr <- par("usr")
+  on.exit(par(usr))
+  par(usr = c(0, 1, 0, 1))
+  Cor <- abs(cor(x, y)) # Remove abs function if desired
+  txt <- paste0(prefix, format(c(Cor, 0.123456789), digits = digits)[1])
+  if(missing(cex.cor)) {
+    cex.cor <- 0.4 / strwidth(txt)
+  }
+  text(0.5, 0.5, txt,
+       cex = 1 + cex.cor * Cor) # Resize the text by level of correlation
+}
+
+labs3<-c("Winter \n SST",
+         "Sea \n Ice \n Cover",
+         "Summer \n SST \n NCEP",
+         "Body Size",
+         "Marine \n DFA \n Trend",
+         "u-wind",
+         "River Ice \n Breakup",
+         "Max \n Streamflow \n Spawn",
+         "Median \n Discharge  \n Rear",
+         "Cum. Degree \n Days Rear",
+         "Max Daily \n Temp Migrate")
+
+pdf(file = "Chinook/Output/Figures/Supplemental/FigS17_CovsCorrModelALT.pdf",   # The directory you want to save the file in
+    width = 10, # The width of the plot in inches
+    height = 10)
+pairs(~ wintersst+
+        ICIA+
+        summer_sst+
+        size+
+        marinecov+
+        uwind+
+        breakup+
+        maxq_spawn+
+        medq_rear+
+        maxDaily_migrate+
+        cdd_rear_stand, 
+      data = unlag_cov_corr,
+      labels=labs3, 
+      upper.panel = panel.cor,         # Disabling the upper panel
+      # diag.panel = panel.hist,
+      lwd=3,col= 'grey', pch=16,cex=0.5,font.labels=2,
+      lower.panel = panel.smooth)
+dev.off()
+
+colnames(unlag_cov_corr)
 
 #### Figure 7 Cov TS ####
 
@@ -700,7 +762,7 @@ covplot <- unlag_cov%>%
          |covariate=="Daily stream temp rearing")%>%
   group_by(covariate, year, region) %>%
   summarise(value = mean(value))
- 
+
 
 
 levels <- c("Max Streamflow Spawning","Daily stream temp rearing","Median Daily Streamflow",
@@ -713,7 +775,7 @@ covplot$covariate = factor(covplot$covariate,
 levels(covplot$covariate) <- levels
 
 unlag$covariate = factor(unlag$covariate, 
-                           levels = levels)
+                         levels = levels)
 levels(unlag$covariate) <- levels
 
 covTS<-ggplot(data = covplot,
@@ -741,4 +803,3 @@ pdf(file = "Chinook/Output/Figures/MainText/Figure6_covtimeseries.pdf",   # The 
     height = 8)
 covTS
 dev.off()
-

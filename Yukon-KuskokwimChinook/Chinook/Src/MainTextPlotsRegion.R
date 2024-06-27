@@ -141,66 +141,17 @@ lumina2<-nord(n = 7, palette = "lumina")
 Aurora2<-hcl.colors(n = 6, palette = "dynamic")
 names.params <- unique(group.levels$Param)
 
-mean <-ggplot(data = mean_cov%>%filter(Param==Param.Name[1]),
-              aes(x =mean, y = reorder(Covar.Name, desc(Covar.Name)), group=Lifestage)) +
-  ggtitle(str_wrap(paste("A. Mean Covariate \n Effect"), width = 20))+
-  scale_color_manual(values = Aurora2, breaks =breaks)+
-  geom_vline(xintercept = 0, linetype = "dashed") +
-  scale_y_discrete(name = "Covariate", labels = function(y) str_wrap(y, width = 20))+
-  scale_x_continuous(name = "Covariate Coefficient")+
-  geom_errorbar(aes(xmin=lower.80, xmax=upper.80),width = 0, size=0.25)+
-  geom_errorbar(aes(xmin=lower.50, xmax=upper.50, col=Lifestage),
-                width = 0, size=1.25)+
-  geom_point(aes(col = Lifestage),size = 2.5)+
-  theme_bw()+
- # xlim(c(-0.65,0.65))+
-  theme(plot.title = element_text(hjust = 0.5, size=16),
-        plot.subtitle = element_text(hjust = 0.5, size=14),
-        axis.title.x = element_blank(),
-        axis.text.x = element_text(size = 14),
-        axis.title.y = element_text(size = 16),
-        axis.text.y = element_text(size = 12, hjust = 0.5),
-        legend.position="none"
-  )+
-  labs(col = "Lifestage")+
-  geom_point(aes(col=Lifestage))
+colnames(group.levels)
+tableS7<-group.levels%>%filter(Param=="mu_coef")%>%
+  select(Covar.Name, Region, mean, lower.80, upper.80)%>%
+  mutate(mean=mean*100,lower.80=lower.80*100, upper.80=upper.80*100)
+write.csv(tableS7,"Chinook/Output/Tables/TableS7.csv")
 
-dist <-ggplot(data = mean_cov%>%filter(Param==Param.Name[2]),
-              aes(x =mean, y = reorder(Covar.Name, desc(Covar.Name)), group = Lifestage)) +
-  ggtitle("B. Regional Covariate \n Effect") +
-  scale_color_manual(values = Aurora2, breaks =breaks, labels = function(y) str_wrap(y, width = 20))+
-  geom_vline(xintercept = 0, linetype = "dashed") +
-  scale_y_discrete(name = "Covariate", labels = function(y) str_wrap(y, width = 20))+
-  scale_x_continuous(name = "Covariate Coefficient")+
-  geom_errorbar(aes(xmin=lower.80, xmax=upper.80),width = 0, size=0.25)+
-  geom_errorbar(aes(xmin=lower.50, xmax=upper.50, col=Lifestage),
-                width = 0, size=1.25)+
-  geom_point(aes(col = Lifestage),size = 2.5)+
-  theme_bw()+
- # xlim(c(-0.65,0.65))+
-  theme(plot.title = element_text(hjust = 0.5, size=16),
-        plot.subtitle = element_text(hjust = 0.5, size=14),
-        axis.title.x = element_blank(),
-        axis.text.x = element_text(size = 14),
-        axis.title.y = element_blank(),
-        axis.text.y =element_blank(),
-        legend.text=element_text(size=14,),
-        legend.title=element_text(size=14)
-  )+
-  
-  labs(col = "Lifestage")+
-  geom_point(aes(col=Lifestage))
-
-arranged <- ggarrange(mean,dist, ncol = 2, nrow = 1)
-
-
-pdf(file = "Chinook/Output/Figures/Regions/Figure3A_MeanCov.pdf",   # The directory you want to save the file in
-    width = 10, # The width of the plot in inches
-    height = 6)
-annotate_figure(arranged, bottom = text_grob("Covariate Coefficient", size=16))
+pdf(file = "Chinook/Output/EffectSummaryRegional.pdf",   # The directory you want to save the file in
+    width = 5, # The width of the plot in inches
+    height = 10)
+plot(tableS7%>%regulartable())
 dev.off()
-
-
 ### Figure 3c Mean Effect ###
 dodge<-0.1
 Param.Name <- unique(group.levels$Param.Name)
@@ -229,7 +180,7 @@ Kuskokwim<-ggplot(data = group.levels%>%filter(Param==names.params[1], Region==r
   )+
   labs(col = "Region")
 
-YukonUS<-ggplot(data = group.levels%>%filter(Param==names.params[2], Region==regions[3]),
+YukonUS<-ggplot(data = group.levels%>%filter(Param==names.params[1], Region==regions[3]),
                   aes(x =mean, y = reorder(Covar.Name, desc(Covar.Name)), group=Lifestage)) +
   ggtitle(str_wrap(paste("B. Yukon (US)"), width = 20))+
   scale_color_manual(values = Aurora2, breaks =breaks)+
@@ -256,7 +207,7 @@ YukonUS<-ggplot(data = group.levels%>%filter(Param==names.params[2], Region==reg
   labs(col = "Region")
 
 
-YukonCA<- ggplot(data = group.levels%>%filter(Param==names.params[2], Region==regions[2]),
+YukonCA<- ggplot(data = group.levels%>%filter(Param==names.params[1], Region==regions[2]),
        aes(x =mean, y = reorder(Covar.Name, desc(Covar.Name)), group=Lifestage)) +
   ggtitle(str_wrap(paste("C. Yukon (CA)"), width = 20))+
   scale_color_manual(values = Aurora2, breaks =breaks)+
@@ -284,7 +235,7 @@ YukonCA<- ggplot(data = group.levels%>%filter(Param==names.params[2], Region==re
 arranged <- ggarrange(Kuskokwim,YukonUS,YukonCA, widths=c(2,1.25,2.5),ncol = 3, nrow = 1)
 
 
-pdf(file = "Chinook/Output/Figures/Regions/Figure3C_MeanCovNoComp.pdf",   # The directory you want to save the file in
+pdf(file = "Chinook/Output/Figures/MainText/Figure3_MeanCov.pdf",   # The directory you want to save the file in
     width = 14, # The width of the plot in inches
     height = 7)
 annotate_figure(arranged,bottom = text_grob("Covariate Coefficient", size=16))
@@ -339,111 +290,13 @@ t2 <-annotate_figure(t1, right = text_grob("Early Marine", size=12, rot=270, vju
 t3 <-annotate_figure(t2, right = text_grob("Adult Marine & Spawning Migration", size=12, rot=270, hjust=-0.9, vjust=4))
 
 
-pdf(file = "Chinook/Output/Figures/Regions/Figure4_Thetassizealt.pdf",   # The directory you want to save the file in
+pdf(file = "Chinook/Output/Figures/MainText/Figure4_ThetaPop.pdf",   # The directory you want to save the file in
     width = 8.5, # The width of the plot in inches
     height = 13)
 t3
 #thetaplot
 dev.off()
 
-IJR<- df.levels%>%filter(Covar.Name=="Maximum daily streamflow"|
-                     Covar.Name=="Daily stream temp"|
-                     Covar.Name=="Median daily streamflow"|
-                     Covar.Name=="River Ice Breakup Date")
-EM<- df.levels%>%filter(Covar.Name=="Sea Ice Cover"|
-                     Covar.Name=="Summer Sea Surface Temperature"|
-                     Covar.Name=="Cross-shelf wind"|
-                     Covar.Name=='Winter Sea Surface Temperature')
-AMSM<- df.levels%>%filter(Covar.Name=="Marine Competitors"|
-                     Covar.Name=="Maximum Daily Migration Temp"|
-                     Covar.Name=="Body Size")  
-
-IJRplot<- ggplot(data = IJR,
-         aes(x =mean, y = reorder(pop, desc(pop)), group = region)) +
-    facet_wrap(.~Covar.Name, ncol = 4,scales='free_x', labeller = label_wrap_gen(18)) +
-    #ggtitle(str_wrap(thetas$Covar.Name, width = 15)) +
-    scale_color_manual(values = c(lumina[3],lumina[4],lumina[7]), name='Subregion')+
-    geom_vline(xintercept = 0, linetype = "dashed") +
-    scale_y_discrete(name = "Population Unit")+
-    scale_x_continuous(name = "Covariate Coefficient")+
-    geom_errorbar(aes(xmin=lower.95, xmax=upper.95),width = 0, size=0.25)+
-    geom_errorbar(aes(xmin=lower.50, xmax=upper.50,col=region), width = 0, size=0.75)+
-    theme_bw()+
-    labs(col = "Region")+
-  theme(plot.title = element_text(hjust = 0.5, size=16),
-        plot.subtitle = element_text(hjust = 0.5, size=14),
-        axis.title.y = element_text(size = 14),
-        axis.title.x = element_text(size = 14),
-        strip.text = element_text(size=11),
-        axis.text.y = element_text(size = 12),
-        axis.text.x = element_text(size = 10),
-        legend.text=element_text(size=12),
-        legend.title=element_text(size=14))+
-    geom_point(aes(col=region))
-
-pdf(file = "Chinook/Output/Figures/Regions/Figure4_IJR.pdf",   # The directory you want to save the file in
-    width = 10, # The width of the plot in inches
-    height = 5)
-IJRplot
-dev.off()
-
-EMplot<- ggplot(data = EM,
-         aes(x =mean, y = reorder(pop, desc(pop)), group = region)) +
-    facet_wrap(.~Covar.Name, ncol = 4,scales='free_x', labeller = label_wrap_gen(18)) +
-    #ggtitle(str_wrap(thetas$Covar.Name, width = 15)) +
-    scale_color_manual(values = c(lumina[3],lumina[4],lumina[7]), name='Subregion')+
-    geom_vline(xintercept = 0, linetype = "dashed") +
-    scale_y_discrete(name = "Population Unit")+
-    scale_x_continuous(name = "Covariate Coefficient")+
-    geom_errorbar(aes(xmin=lower.95, xmax=upper.95),width = 0, size=0.25)+
-    geom_errorbar(aes(xmin=lower.50, xmax=upper.50,col=region), width = 0, size=0.75)+
-    theme_bw()+
-    labs(col = "Region")+
-  theme(plot.title = element_text(hjust = 0.5, size=16),
-        plot.subtitle = element_text(hjust = 0.5, size=14),
-        axis.title.y = element_text(size = 14),
-        axis.title.x = element_text(size = 14),
-        strip.text = element_text(size=11),
-        axis.text.y = element_text(size = 12),
-        axis.text.x = element_text(size = 10),
-        legend.text=element_text(size=12),
-        legend.title=element_text(size=14))+
-    geom_point(aes(col=region))
-
-pdf(file = "Chinook/Output/Figures/Regions/Figure4_EM.pdf",   # The directory you want to save the file in
-    width = 10, # The width of the plot in inches
-    height = 5)
-EMplot
-dev.off()
-
-AMSMplot<- ggplot(data = AMSM,
-         aes(x =mean, y = reorder(pop, desc(pop)), group = region)) +
-    facet_wrap(.~Covar.Name, ncol = 3,scales='free_x', labeller = label_wrap_gen(18)) +
-    #ggtitle(str_wrap(thetas$Covar.Name, width = 15)) +
-    scale_color_manual(values = c(lumina[3],lumina[4],lumina[7]), name='Subregion')+
-    geom_vline(xintercept = 0, linetype = "dashed") +
-    scale_y_discrete(name = "Population Unit")+
-    scale_x_continuous(name = "Covariate Coefficient")+
-    geom_errorbar(aes(xmin=lower.95, xmax=upper.95),width = 0, size=0.25)+
-    geom_errorbar(aes(xmin=lower.50, xmax=upper.50,col=region), width = 0, size=0.75)+
-    theme_bw()+
-    labs(col = "Region")+
-  theme(plot.title = element_text(hjust = 0.5, size=16),
-        plot.subtitle = element_text(hjust = 0.5, size=14),
-        axis.title.y = element_text(size = 14),
-        axis.title.x = element_text(size = 14),
-        strip.text = element_text(size=11),
-        axis.text.y = element_text(size = 12),
-        axis.text.x = element_text(size = 10),
-        legend.text=element_text(size=12),
-        legend.title=element_text(size=14))+
-    geom_point(aes(col=region))
-
-pdf(file = "Chinook/Output/Figures/Regions/Figure4_AMSM.pdf",   # The directory you want to save the file in
-    width = 8, # The width of the plot in inches
-    height = 5)
-AMSMplot
-dev.off()
 
 #### Figuer S18 Model Fits #####
 

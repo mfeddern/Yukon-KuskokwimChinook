@@ -6,10 +6,8 @@ library(readr)
 library(stringr)
 library(ggplot2)
 library(cowplot)
-library(Cairo)
 library(MCMCvis)
 library(HDInterval)
-library(reshape2)
 library(tidyverse)
 library(dplyr)
 library(rstan)
@@ -40,28 +38,16 @@ Region.names<-unique(full.dat.wide.cov%>%select(region))$region
 
 #selecting covariates to include in model:
 covariates<- full.dat.wide.cov%>% 
-    select(#ProbWinter_stand,
-      Winter_stand,
-     # Age_3_Biomass_stand
-     # Recruitment_stand
+    select(Winter_stand,
          EarlySummer_stand,
          medq_rear_stand,
     size_stand,
      marine_stand,
-      # chum_stand
-      #vwind_stand,
            uwind_stand,
            ICIA_stand,
           breakup2,
-      # max5dprcp_stand,
-               maxq_spawn_stand,
-      #mean_swe_rear,
-      # mean_swe_icu,
-      # mnprcp_rear_stand,
-     maxDaily_migrate_stand,
-    #maxWeekly_migrate_stand, 
-    # cdd17_stand,
-    #    maxDaily_spawn_stand,
+        maxq_spawn_stand,
+         maxDaily_migrate_stand,
               cdd_rear_stand
          )
 #covariates<- full.dat.wide.cov%>% 

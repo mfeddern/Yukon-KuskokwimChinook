@@ -21,7 +21,6 @@ dat<-readRDS("Chinook/Output/posteriors/full.dat.wide.cov.offset.rds")
 recruits<-readRDS("Chinook/Output/posteriors/recruits.rds")
 unstand <- readRDS("Chinook/Output/posteriors/unstandcov3.rds")
 residual <- readRDS("Chinook/Output/posteriors/residualcov.rds")
-effectsummary <- readRDS("Chinook/Output/posteriors/effectsummary.rds")
 residualnc <- readRDS("Chinook/Output/posteriors/residualnc.rds")
 unlag_cov <- readRDS( "Chinook/Output/posteriors/unlagcov.rds")
 mean_cov <- readRDS( "Chinook/Output/posteriors/mean.theta.rds")
@@ -88,7 +87,7 @@ prod.time <- ggplot(data = full.dat.wide.levels, aes(x = year, y = log(recruits/
         legend.title=element_text(size=16))+
   scale_y_continuous(name = "Productivity Index (ln[R/S])")
 
-pdf(file = "Chinook/Output/Figures/Regions/Figure2_ProductivityTimeSeries.pdf",   # The directory you want to save the file in
+pdf(file = "Chinook/Output/Figures/MainText/Figure2_ProductivityTimeSeries.pdf",   # The directory you want to save the file in
     width = 8, # The width of the plot in inches
     height = 10)
 prod.time
@@ -147,11 +146,7 @@ tableS7<-group.levels%>%filter(Param=="mu_coef")%>%
   mutate(mean=mean*100,lower.80=lower.80*100, upper.80=upper.80*100)
 write.csv(tableS7,"Chinook/Output/Tables/TableS7.csv")
 
-pdf(file = "Chinook/Output/EffectSummaryRegional.pdf",   # The directory you want to save the file in
-    width = 5, # The width of the plot in inches
-    height = 10)
-plot(tableS7%>%regulartable())
-dev.off()
+
 ### Figure 3c Mean Effect ###
 dodge<-0.1
 Param.Name <- unique(group.levels$Param.Name)
@@ -245,8 +240,6 @@ dev.off()
 #### Figuer 4 Theta By Watershed Plots #####
 
 npop<-length(unique(full.dat.wide.cov$pop))
-n<- length(names.covars)
-
 levels <- c("Maximum daily streamflow","Daily stream temp",'Snowpack (snow-water equivalent)',
             "Median daily streamflow", "River Ice Breakup Date",
             "Sea Ice Cover",  "Summer Sea Surface Temperature",
@@ -297,12 +290,10 @@ t3
 #thetaplot
 dev.off()
 
-
 #### Figuer S18 Model Fits #####
 
 recruits.levels <- data.frame(recruits)
 recruits.levels$pop<-factor(recruits.levels$pop, levels=pops.regions) 
-
 
 fitplot<- ggplot(data = recruits.levels,
                    aes(x =year, y = log(pred), group = region)) +
@@ -323,112 +314,11 @@ fitplot<- ggplot(data = recruits.levels,
                      legend.justification = c(1, 0))+
   labs(col = "Region")
 
-pdf(file = "Chinook/Output/Figures/Regions/FigS19_modelfits.pdf",   # The directory you want to save the file in
+pdf(file = "Chinook/Output/Figures/Supplement/FigS18_modelfits.pdf",   # The directory you want to save the file in
     width = 8, # The width of the plot in inches
     height = 10)
 fitplot
 dev.off()
-
-#### Figure STAND Residuals ######
-
-levels <- c("Maximum Daily Streamflow","Daily stream temp rearing",'Snowpack (snow-water equivalent)',
-            "Median Daily Streamflow", "River Ice Breakup Date",
-            "Ice Cover Index",  "Summer Sea Surface Temperature",
-            "cross-shelf wind","First Marine Winter SST",
-            'Pollock Biomass',"North Pacific Chum", "Marine Competitors",
-            "Migration CDD above 17C",  "Maximum Weekly Migration Temp", "Maximum Daily Migration Temp",
-            "Size")
-
-covstand <- dat%>%select(pop, year, region, EarlySummer_stand,
-                         medq_rear_stand,
-                         size,
-                         Winter_stand,
-                         # Age_3_Biomass_stand,
-                         #chum_stand,
-                         uwind_stand,
-                         marine_stand,
-                         # mean_swe_rear,
-                         ICIA_stand,
-                         breakup2,
-                         maxq_spawn_stand,
-                         # cdd17_stand,
-                         # maxWeekly_migrate_stand,
-                         maxDaily_migrate_stand,
-                         cdd_rear_stand
-) %>%
-  rename("Summer Sea Surface Temperature"=EarlySummer_stand,
-         "Median Daily Streamflow"=medq_rear_stand,
-         "Size"=size,
-         "First Marine Winter SST"=Winter_stand,
-         #"Age 3+ Pollock Biomass"=mean(Age_3_Biomass_stand),
-         #"North Pacific Chum"=mean(chum_stand),
-         "cross-shelf wind"=uwind_stand,
-         "Marine Competitors"=marine_stand,
-         "Ice Cover Index"=ICIA_stand,
-         #"Snowpack (snow-water equivalent)" = mean_swe_rear,
-         "River Ice Breakup Date"=breakup2,
-         "Maximum Daily Streamflow"=maxq_spawn_stand,
-         #"Migration CDD above 17C"=cdd17_stand,
-         #"Maximum Weekly Migration Temp"= maxWeekly_migrate_stand,
-         "Maximum Daily Migration Temp"=maxDaily_migrate_stand,
-         "Daily stream temp rearing"=cdd_rear_stand)%>%
-  pivot_longer(
-    cols = c("Summer Sea Surface Temperature",
-             "Ice Cover Index",
-             #   "Snowpack (snow-water equivalent)",
-             "Size",
-             # "North Pacific Chum",
-             "First Marine Winter SST",
-             "Marine Competitors",
-             #"Age 3+ Pollock Biomass",
-             "cross-shelf wind",
-             "River Ice Breakup Date",
-             "Maximum Daily Streamflow",
-             "Median Daily Streamflow",
-             #"Migration CDD above 17C",
-             #"Maximum Weekly Migration Temp",
-             "Maximum Daily Migration Temp",
-             "Daily stream temp rearing"),
-    names_to = "covariate",
-    values_to = "value",
-    values_drop_na = TRUE
-  )
-
-
-covariates<- covstand %>% #this code is for the standardized plots
-  merge(select(residual, residual,year, pop), by = c('year', 'pop'))
-cov_lon <- covariates
-
-cov_lon$covariate = factor(cov_lon$covariate, 
-                           levels = levels)
-levels(cov_lon$covariate) <- levels
-
-
-
-residPlot <- ggplot(data = cov_lon,
-       aes(x =value , y = residual,
-           group=region)) +
-  facet_wrap(.~covariate,scales='free', ncol = 4, labeller = label_wrap_gen(18) ) +
-  geom_point(col='grey')+
-  #ggtitle(thetas$Covar.Name, subtitle = thetas$Lifestage) +
-  scale_color_manual(values = c(lumina[3],lumina[4],lumina[7]))+
-  geom_smooth(aes(col=region))+
-  #geom_vline(xintercept = 0, linetype = "dashed") +
-  scale_y_continuous(name ="Productivity (Ricker Residual)" )+
-  scale_x_continuous(name = "Covariate Value")+
-  theme_bw()+
-  #ylim(c(-2,2))+
-  theme(legend.position = c(0.9, 0.08),
-        legend.justification = c(1, 0))+
-  labs(col = "Region")
-
-
-pdf(file = "Chinook/Output/Figures/STAND_residuals2.pdf",   # The directory you want to save the file in
-    width = 8, # The width of the plot in inches
-    height = 10)
-residPlot
-dev.off()
-
 
 ####Figure S21 UNSATND ####
 covunstand <- unstand%>%select(pop, year, region, EarlySummer,
@@ -493,9 +383,6 @@ cov_lon$covariate = factor(cov_lon$covariate,
                            levels = levels)
 levels(cov_lon$covariate) <- levels
 
-
-
-
 residPlot <- ggplot(data = cov_lon,
                     aes(x =value , y = residual,
                         group=region)) +
@@ -515,41 +402,12 @@ residPlot <- ggplot(data = cov_lon,
   labs(col = "Region")
 
 
-pdf(file = "Chinook/Output/Figures/Regions/FigureS21_UNSTAND_residuals.pdf",   # The directory you want to save the file in
+pdf(file = "Chinook/Output/Figures/Supplement/FigureS21_UNSTAND_residuals.pdf",   # The directory you want to save the file in
     width = 8, # The width of the plot in inches
     height = 10)
 residPlot
 dev.off()
 
-
-
-cov_lonv2<- cov_lon%>%
-  filter(covariate=='Maximum Daily Migration Temp')
-         # covariate=="First Marine Winter SST")
-
-residPlotv2 <- ggplot(data = cov_lonv2,
-                    aes(x =value , y = residual,
-                        group=region)) +
-  facet_wrap(.~covariate,scales='free', ncol = 2, labeller = label_wrap_gen(18) ) +
-  geom_point(col='grey')+
-  #ggtitle(thetas$Covar.Name, subtitle = thetas$Lifestage) +
-  scale_color_manual(values = c(lumina[3],lumina[4],lumina[7]))+
-  geom_smooth(method = "gam", 
-              formula = y ~ s(x, bs = "cs", fx = TRUE, k = 5),aes(col=region))+
-  #geom_vline(xintercept = 0, linetype = "dashed") +
-  scale_y_continuous(name ="Productivity (Ricker Residual)" )+
-  scale_x_continuous(name = "Degrees Celsius")+
-  theme_bw()+
-  #ylim(c(-2,2))+
-
-  labs(col = "Region")
-
-
-pdf(file = "Chinook/Output/Figures/Regions/Figure7_MigTemp.pdf",   # The directory you want to save the file in
-    width = 6, # The width of the plot in inches
-    height = 4)
-residPlotv2
-dev.off()
 
 
 #### Figure 6 Cov TS ####
@@ -618,7 +476,7 @@ covTS<-ggplot(data = covplot,
         legend.title=element_text(size=16))+
   labs(col = "Region")
 covTS
-pdf(file = "Chinook/Output/Figures/Regions/Figure6_covtimeseries.pdf",   # The directory you want to save the file in
+pdf(file = "Chinook/Output/Figures/MainText/Figure6_covtimeseries.pdf",   # The directory you want to save the file in
     width = 10, # The width of the plot in inches
     height = 8)
 covTS
@@ -648,6 +506,7 @@ cov_lon$covariate = factor(cov_lon$covariate,
                            levels = levels)
 levels(cov_lon$covariate) <- levels
 
+#### Figure 5 ####
 migration_temps_plot<-ggplot(data = cov_lon,
        aes(x =value , y = residual,
            group=region)) +
@@ -658,7 +517,7 @@ migration_temps_plot<-ggplot(data = cov_lon,
   geom_smooth(aes(col=region))+
   #geom_vline(xintercept = 0, linetype = "dashed") +
   scale_y_continuous(name ="Ricker Residual" )+
-  scale_x_continuous(name = "Covariate Value")+
+  scale_x_continuous(name = "Degrees Celsius")+
   theme_bw()+
   #ylim(c(-2,2))+
   theme(legend.position = c(0.4, 0.01),
@@ -666,63 +525,8 @@ migration_temps_plot<-ggplot(data = cov_lon,
   labs(col = "Region")
 migration_temps_plot
 
-
-
-#ylim(c(-2,2))+
-# theme(legend.position="none")
-
-pdf(file = "Chinook/Output/Figures/Regions/MainText/Fig5_MigrationTemp.pdf",   # The directory you want to save the file in
+pdf(file = "Chinook/Output/Figures/MainText/Figure5_MigrationTemp.pdf",   # The directory you want to save the file in
     width = 4, # The width of the plot in inches
     height =4)
 migration_temps_plot
 dev.off()
-
-
-
-
-#### Figure 8 Residual Time ######
-residual$pop <-factor(residual$pop, levels=pops.regions) 
-
-levels(residual$pop) <- 
-  c("Aniak","George","Goodnews", "Holitna",
-    "Holokuk", "Kisaralik","Kogrukluk","Kwethluk",
-    "Oskawalik","Pitka", "Swift",      
-    "Takotna","Tatlawiksuk","Tuluksak",
-    
-    "Carmacks","Lower Mainstem","Mid Mainstem",    
-    "Pelly","Stewart","Teslin",      
-    "Upper Lakes Mainstem","White-Donjek",
-    
-    "Andreafsky East Fork","Chena","Gisasa",
-    "Salcha")
-
-residPlot <- ggplot(data = residual,
-                    aes(x =year , y = residual))+
-  #group=region)) +
-  facet_wrap(.~pop,scales='free', ncol = 3, labeller = label_wrap_gen(18) ) +
-  #ggtitle(thetas$Covar.Name, subtitle = thetas$Lifestage) +
-  scale_color_manual(values = c(lumina[3],lumina[4],lumina[7]))+
-  geom_smooth(aes(col=region))+
-  geom_point(aes(col=region))+
-  #geom_vline(xintercept = 0, linetype = "dashed") +
-  scale_y_continuous(name ="Productivity (Model Residual)")+
-  scale_x_continuous(name = "Brood Year")+
-  geom_hline(yintercept=0,linetype="dashed")+
-  theme_bw()+
-  theme(legend.position = c(0.9, -0.025),
-        legend.justification = c(1, 0))+
-  labs(col = "Region")
-
-
-pdf(file = "Chinook/Output/Figures/Regions/Figure8_OPT_residualTS.pdf",   # The directory you want to save the file in
-    width = 8, # The width of the plot in inches
-    height = 10)
-residPlot
-dev.off()
-
-
-
-
-
-
-

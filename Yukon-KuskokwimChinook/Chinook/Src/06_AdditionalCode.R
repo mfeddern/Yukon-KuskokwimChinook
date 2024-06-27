@@ -13,6 +13,7 @@ library(dplyr)
 library(rstan)
 library(car)
 
+
 ##### Covariates UNSTANDARDIZED ####
 yr_fst <- 1980
 yr_last <- 2020
@@ -773,3 +774,164 @@ pdf(file = "Chinook/Output/Figures/MainText/Figure6_covtimeseries.pdf",   # The 
     height = 8)
 covTS
 dev.off()
+
+full.dat.wide.cov<-readRDS("Chinook/Output/posteriors/full.dat.wide.cov.offset.rds")
+colnames(full.dat.wide.cov)
+pop_assignments<- unique(full.dat.wide.cov%>%select(pop,region2,region))
+
+pops_allMets<- readRDS("precipitation/output/pops_allMets.rds")
+pops_allMetsV3<- readRDS("precipitation/output/pops_allMets_v3.rds")
+
+colnames(pops_allMets)
+colnames(pops_allMetsV3)
+
+summ_FW<-pops_allMetsV3%>%
+  rename(pop=Population, region=Region)%>%
+  left_join(pop_assignments)%>%
+  group_by(region)%>%
+  summarise(mean(maxq_spawn),sd(maxq_spawn),
+            mean(medq_rear ),sd(medq_rear),
+            mean(maxq_spawn),sd(maxq_spawn),
+            mean(cdd_rear),sd(cdd_rear),
+            mean(maxDaily_migrate),sd(maxDaily_migrate)
+  )
+
+
+
+
+
+SST_dat <-read.csv('ocean/BS-SST-2023-09-28.csv')#reading in winter SST data
+SST_winter <-SST_dat%>%
+  filter(Ecosystem_sub=='Southeastern Bering Sea')%>% #selecting region from dataset
+  filter(month==1|month==2|month==3)%>% #selecting winter months
+  summarise(winter_mean=mean(meansst),
+            winter_sd=sd(meansst))#calculating annual mean grouped by year across months
+
+
+SST_summer<-read.csv('ocean/NCEP_NCAR_SST.csv') #data from NCEP/NCAR
+SST_summer%>%
+  group_by(Year) %>%
+  filter(Year >= yr_fst & Year <= yr_last)%>%
+  select(EarlySummer_North)%>%
+  mutate(year = Year-2)%>%#assigning brood year offset: 2
+  ungroup()%>%
+  mutate(region2 = "Yukon")%>% #selecting winter months
+  summarise(mean=mean(EarlySummer_North),
+            sd=sd(EarlySummer_North))
+
+SST_summer%>%
+  group_by(Year) %>%
+  filter(Year >= yr_fst & Year <= yr_last)%>%
+  select(EarlySummer_South)%>%
+  mutate(year = Year-2)%>%
+  ungroup()%>%
+  summarise(mean=mean(EarlySummer_South),
+            sd=sd(EarlySummer_South))
+
+
+IceExtent <-read.csv('ocean/SeaIceIndices.csv')
+IceExtent%>%
+  group_by(Year) %>%
+  select(ICIA)%>%
+  filter(Year >= yr_fst & Year <= yr_last)%>%
+  mutate(year = Year-2)%>%
+  ungroup()%>%
+  summarise(mean=mean(ICIA),
+            sd=sd(ICIA))
+
+
+uwind <-read.csv('ocean/uwindMonthly.csv') ### turning NPGO into an annual mean
+uwind%>%
+  group_by(Year) %>%
+  filter(Year >= yr_fst & Year <= yr_last)%>%
+  mutate(avg = mean(c(X6, X7, X8)))%>% #getting the average across the summer
+  rename("year"='Year')%>%
+  mutate(year = year-2)%>%
+  ungroup()%>%
+  summarise(mean=mean(avg),
+            sd=sd(avg))
+
+
+read.csv('ocean/YukonSizeUpdate/YukonSizeUpdated.csv')%>%
+  #group_by(Location, Sample.Year,Age.Fresh,Age.Salt)%>%
+  summarise(mean=mean(na.omit(Length)), sd=sd(na.omit(Length)), n=n())
+
+read.csv('ocean/KuskokwimSizeUpdate/KuskokwimSizeUpdated.csv')%>%
+  #group_by(Location, Sample.Year,Age.Fresh,Age.Salt)%>%
+  summarise(mean=mean(na.omit(Length)), sd=sd(na.omit(Length)), n=n())
+
+breakupfull <-read.csv('breakup/output/breakupAYK.csv')
+
+Tanana <-  breakupfull%>%filter(Site  == "Tanana River at Nenana")%>%
+  select(c("DOY", "Site", "Year"))%>%
+  dplyr::group_by(Year, Site) %>%
+  summarise(day = as.numeric(mean(DOY)))%>%
+  mutate(region = "Yukon (US)")%>%
+  filter(Year >= yr_fst & Year <= yr_last)
+sd(Tanana$day)
+mean(Tanana$day)
+
+Dawson <-  breakupfull%>%filter(Site  == "Yukon River at Dawson")%>%
+  select(c("DOY", "Site", "Year"))%>%
+  dplyr::group_by(Year, Site) %>%
+  summarise(day = as.numeric(mean(DOY)))%>%
+  mutate(region = "Yukon (CA)")%>%
+  filter(Year >= yr_fst & Year <= yr_last)
+sd(Dawson$day)
+mean(Dawson$day)
+
+Kuskokwim <-  breakupfull%>%filter(Site  == "Kuskokwim River at Bethel")%>%
+  select(c("DOY", "Site", "Year"))%>%
+  dplyr::group_by(Year, Site) %>%
+  summarise(day = as.numeric(mean(DOY)))%>%
+  mutate(region = "Kuskokwim")%>%
+  filter(Year >= yr_fst & Year <= yr_last)
+sd(Kuskokwim$day)
+mean(Kuskokwim$day)
+
+
+
+
+##### Table S6 ####
+#this code needs a model object to run ***
+nc <- readRDS("Chinook/Output/posteriors/residualnc.rds")
+
+#### Population effect size ####
+mean_spawn<- full.dat.wide.cov%>%
+  group_by(pop)%>%
+  summarise(mean_spawn = mean(spawners))
+
+alpha <- extract(bhfit, pars=c('alpha'), permuted = TRUE, inc_warmup = FALSE,
+                 include = TRUE)$alpha
+beta <-extract(bhfit, pars=c('beta'), permuted = TRUE, inc_warmup = FALSE,
+               include = TRUE)$beta
+theta <- extract(bhfit, pars=c('theta'), permuted = TRUE, inc_warmup = FALSE,
+                 include = TRUE)
+effect.null.rec<-array(dim = c((total_iterations-warmups)*n_chains,npop))
+effect.rec<-array(dim = c((total_iterations-warmups)*n_chains, npop, 11))
+effect<-array(dim = c((total_iterations-warmups)*n_chains, npop, 11))
+j<-1
+i<- 1
+for(j in 1:11){
+  for(i in 1:npop){
+    for (y in 1:N){
+      effect.null.rec[,j] <- mean_spawn$mean_spawn[j]*exp(alpha[,j]-mean_spawn$mean_spawn[j]*beta[,j])
+      effect.rec[,i,j] <- mean_spawn$mean_spawn[j]*exp(alpha[,j]-mean_spawn$mean_spawn[j]*beta[,j]+theta$theta[,i,j]*apply(covariates,2,sd)[j])
+    }
+  }
+  effect[,,j] <- ((effect.rec[,i,j]-effect.null.rec[,j])/effect.null.rec[,j])*100
+}
+
+effectsummary <- data.frame()
+for(i in 1:11){
+  df <- data.frame(t(hdi(effect[,i,], credMass = 0.95)))%>%
+    data.frame(t(hdi(effect[,i], credMass = 0.5)))%>%
+    add_column(mean = mean(effect[,i]))%>%
+    # add_column(pop=unique(full.dat.wide$pop))%>%
+    add_column(Covar.Name=rep(names.covars[i],1))
+  effectsummary <- rbind(effectsummary,df)
+}
+
+
+
+

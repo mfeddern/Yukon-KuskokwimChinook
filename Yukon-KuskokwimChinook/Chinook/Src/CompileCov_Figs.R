@@ -6,10 +6,8 @@ library(readr)
 library(stringr)
 library(ggplot2)
 library(cowplot)
-library(Cairo)
 library(MCMCvis)
 library(HDInterval)
-library(reshape2)
 library(tidyverse)
 library(dplyr)
 library(rstan)
@@ -18,6 +16,7 @@ library(car)
 ##### Covariates UNSTANDARDIZED ####
 yr_fst <- 1980
 yr_last <- 2020
+lumina<-nord(n = 6, palette = "lumina")
 
 pollock_Biomass <-read.csv('ocean/EBS_Pollock.csv')
 pollock_Biomass <-pollock_Biomass%>% 
@@ -284,35 +283,6 @@ unstand_cov <-  merge(SST_summer,resid,  by=c('year', 'region2'))%>%
 
 
 saveRDS(unstand_cov , file = "Chinook/Output/posteriors/unstandcov3.rds")
-
-
-summary(lm(maxDaily_break~breakup2+region, data = unstand_cov))
-ggplot(data = unstand_cov,
-       aes(x =breakup2, y = maxDaily_break,
-           group=region))+
-  #facet_wrap(.~covariate,scales='free', ncol = 3, labeller = label_wrap_gen(18) ) +
-  geom_point(aes(col=region))+
-  geom_smooth(aes(col=region))+
-  scale_y_continuous(name ="Max Daily Stream Temperature")+
-  scale_x_continuous(name = "Breakup Date (JD)")+
-  #ggtitle(thetas$Covar.Name, subtitle = thetas$Lifestage) +
-  scale_color_manual(values = c(lumina[3],lumina[4],lumina[7]))
-
-
-ggplot(data = unstand_cov,
-       aes(x =breakup2, y = maxDaily_break,
-           group=region))+
-  #facet_wrap(.~covariate,scales='free', ncol = 3, labeller = label_wrap_gen(18) ) +
-  geom_point(aes(col=region))+
-  #  stat_poly_line() +
-  stat_smooth(method = "lm",
-              formula = y ~ x,
-              geom = "smooth",aes(col=region))+
-  scale_y_continuous(name ="Max Daily Stream Temperature")+
-  scale_x_continuous(name = "Breakup Date (JD)")+
-  #ggtitle(thetas$Covar.Name, subtitle = thetas$Lifestage) +
-  scale_color_manual(values = c(lumina[3],lumina[4],lumina[7]))
-
 ##### Covariates NOT LAGGED ####
 
 
@@ -489,8 +459,8 @@ pinkchum  <- pinkchum1 %>%
   select(year, value, covariate)%>%
   ungroup()
 
-size<-read.csv('ocean/SizeTrend.csv')
-size<-size%>%
+Size<-read.csv('ocean/SizeTrend.csv')
+size<-Size%>%
   rename(region2=Region, size=Size, year=Year)%>%
   mutate(covariate = 'Size')%>%
   rename(value = size)%>%
@@ -667,7 +637,7 @@ unlag_cov_corr<-merge(pop_assignments, SST_summer%>%rename(region2=region,summer
   merge(SST_winter%>%select(-covariate,-region)%>%rename(wintersst=value), by=c('year'))%>%
   merge(marinecov%>%rename(marinecov=value)%>%select(-covariate), by='year')%>%
   merge(IceExtent%>%rename(ICIA=value)%>%select(-covariate), by='year')%>%
-  merge(size, by=c('region2','year'))%>%
+  merge(Size%>%rename(region2=Region,year=Year), by=c('region2','year'))%>%
   merge(uwind%>%rename(uwind=value)%>%select(-covariate, -region), by='year')%>%
   merge(breakup2%>%rename(breakup=value)%>%select(-covariate), by=c('region','year'))%>%
   merge(max5dprcp_stand%>%rename(max5dprcp=value)%>%select(-covariate, -region), by=c('pop','year'))%>%
@@ -720,13 +690,13 @@ labs3<-c("Winter \n SST",
          "Cum. Degree \n Days Rear",
          "Max Daily \n Temp Migrate")
 
-pdf(file = "Chinook/Output/Figures/Supplemental/FigS17_CovsCorrModelALT.pdf",   # The directory you want to save the file in
+pdf(file = "Chinook/Output/Figures/Supplement/FigS17_CovsCorrModelNoLag.pdf",   # The directory you want to save the file in
     width = 10, # The width of the plot in inches
     height = 10)
 pairs(~ wintersst+
         ICIA+
         summer_sst+
-        size+
+        size_stand+
         marinecov+
         uwind+
         breakup+

@@ -1,0 +1,287 @@
+"","Covar.Name","region","pop","mean","lower.80","upper.80"
+"1","Winter Sea Surface Temperature","Kuskokwim","Aniak",18.9466354127363,8.80992877288208,28.2809160733153
+"2","Summer Sea Surface Temperature","Kuskokwim","Aniak",-16.1621332427618,-24.5209231721965,-8.23261497615123
+"3","Median daily streamflow","Kuskokwim","Aniak",2.13989483114403,-5.68104427514975,10.4242754399755
+"4","Body Size","Kuskokwim","Aniak",-10.2777123077829,-29.3998240249101,8.06795450966729
+"5","Marine Competitors","Kuskokwim","Aniak",-20.7512051494599,-39.2377650033306,-2.38598686776525
+"6","Cross-shelf wind","Kuskokwim","Aniak",1.83336284393112,-5.91163344728012,8.93805255423389
+"7","Sea Ice Cover","Kuskokwim","Aniak",-22.196118892386,-33.6101916971881,-11.3117239209179
+"8","River Ice Breakup Date","Kuskokwim","Aniak",1.9321674551535,-6.40476878750093,9.54254690912794
+"9","Maximum daily streamflow","Kuskokwim","Aniak",0.0264671964688717,-8.88952830964853,7.33141129067516
+"10","Maximum Daily Migration Temp","Kuskokwim","Aniak",0.054006549891061,-7.06776543335398,7.41854484431043
+"11","Daily stream temp","Kuskokwim","Aniak",3.7757882270002,-7.70208112307965,15.2533526941479
+"12","Winter Sea Surface Temperature","Yukon (CA)","Carmacks",12.9335548722098,4.51292259007396,21.4257894884751
+"13","Summer Sea Surface Temperature","Yukon (CA)","Carmacks",-3.74036685260017,-14.2159784192711,5.72832071404572
+"14","Median daily streamflow","Yukon (CA)","Carmacks",-1.18723352988515,-9.50727977303276,7.5058244242551
+"15","Body Size","Yukon (CA)","Carmacks",22.3887667120423,13.6328358262349,30.719446991865
+"16","Marine Competitors","Yukon (CA)","Carmacks",0.946373587144156,-21.0527797240106,23.1613002901296
+"17","Cross-shelf wind","Yukon (CA)","Carmacks",-7.39295404096613,-16.6968120326341,1.53875365686798
+"18","Sea Ice Cover","Yukon (CA)","Carmacks",-6.35098590995152,-12.4200572763837,-0.129560661849132
+"19","River Ice Breakup Date","Yukon (CA)","Carmacks",-10.8714597515738,-19.7330388657917,-2.01130724982268
+"20","Maximum daily streamflow","Yukon (CA)","Carmacks",6.88947363525575,-6.41098096145114,19.3286775733395
+"21","Maximum Daily Migration Temp","Yukon (CA)","Carmacks",-8.63407157045218,-18.5528864610977,1.54387149793823
+"22","Daily stream temp","Yukon (CA)","Carmacks",-7.23436448597505,-19.8075258961491,3.82146163816437
+"23","Winter Sea Surface Temperature","Yukon (US)","Chena",23.9945747624374,13.1328256220906,35.8626205738434
+"24","Summer Sea Surface Temperature","Yukon (US)","Chena",-17.8238387879766,-29.2392726432235,-6.66115451045421
+"25","Median daily streamflow","Yukon (US)","Chena",-10.4715956059946,-22.6744695307306,1.09784555751126
+"26","Body Size","Yukon (US)","Chena",39.3256262338927,19.2558244742115,59.3507955665235
+"27","Marine Competitors","Yukon (US)","Chena",-14.6810722266514,-47.3864727586168,17.3482838576652
+"28","Cross-shelf wind","Yukon (US)","Chena",-9.00305596315725,-18.4507506950967,0.799796603676465
+"29","Sea Ice Cover","Yukon (US)","Chena",-4.05747962701874,-14.8427148630241,6.2240509658581
+"30","River Ice Breakup Date","Yukon (US)","Chena",-9.26054639838772,-21.741971560968,2.49862221505667
+"31","Maximum daily streamflow","Yukon (US)","Chena",-9.14343688079047,-21.0591646759219,1.67727229350547
+"32","Maximum Daily Migration Temp","Yukon (US)","Chena",-20.0204919101768,-32.143681027083,-8.05981174179041
+"33","Daily stream temp","Yukon (US)","Chena",1.64044220546211,-8.37852024169194,11.3359622249407
+"34","Winter Sea Surface Temperature","Yukon (US)","Andreafsky East Fork",14.9199150651152,3.54954725508547,25.8879665042867
+"35","Summer Sea Surface Temperature","Yukon (US)","Andreafsky East Fork",-19.6549577302778,-32.3497761854439,-8.07081331197073
+"36","Median daily streamflow","Yukon (US)","Andreafsky East Fork",4.12206779197811,-13.0041271521042,24.9608295446467
+"37","Body Size","Yukon (US)","Andreafsky East Fork",26.0484880520686,0.787412220514585,48.6794023438066
+"38","Marine Competitors","Yukon (US)","Andreafsky East Fork",39.3566672338176,-26.8709785515055,110.710838713023
+"39","Cross-shelf wind","Yukon (US)","Andreafsky East Fork",-13.7256154948101,-25.5962337758267,-1.88589599219406
+"40","Sea Ice Cover","Yukon (US)","Andreafsky East Fork",-1.38455684646626,-12.1766924748017,9.48578912942796
+"41","River Ice Breakup Date","Yukon (US)","Andreafsky East Fork",29.5854296404726,1.07470390528086,57.0091517102024
+"42","Maximum daily streamflow","Yukon (US)","Andreafsky East Fork",-7.81532399773564,-22.2782601908472,5.32172984497323
+"43","Maximum Daily Migration Temp","Yukon (US)","Andreafsky East Fork",-9.12765675338596,-27.6438682012886,14.0993867452853
+"44","Daily stream temp","Yukon (US)","Andreafsky East Fork",10.2581109598798,-2.94678494565373,25.7454511655736
+"45","Winter Sea Surface Temperature","Kuskokwim","George",19.6963302061358,10.8908646527405,28.2577449575951
+"46","Summer Sea Surface Temperature","Kuskokwim","George",-11.5890215713791,-18.7901731256425,-3.5545238189337
+"47","Median daily streamflow","Kuskokwim","George",-2.15745231196532,-11.3552408006696,6.27310599223398
+"48","Body Size","Kuskokwim","George",3.5921034743876,-16.7077757336701,26.2167959033546
+"49","Marine Competitors","Kuskokwim","George",-19.9749581743113,-40.9831121671742,0.389936397146926
+"50","Cross-shelf wind","Kuskokwim","George",3.5271938383947,-3.56315886852379,10.4750054301118
+"51","Sea Ice Cover","Kuskokwim","George",-12.7579563450324,-20.8521957394787,-4.55031499167498
+"52","River Ice Breakup Date","Kuskokwim","George",4.62867317142881,-2.61959167196521,11.8482565502387
+"53","Maximum daily streamflow","Kuskokwim","George",1.33001415715122,-6.08625474920652,7.96154845743567
+"54","Maximum Daily Migration Temp","Kuskokwim","George",-0.405310805916864,-6.80845395418504,6.13467819922532
+"55","Daily stream temp","Kuskokwim","George",17.6961198162951,3.05794164347107,31.0864003134033
+"56","Winter Sea Surface Temperature","Yukon (US)","Gisasa",15.9579609735583,5.07922511670947,26.428734645116
+"57","Summer Sea Surface Temperature","Yukon (US)","Gisasa",-22.2969480075599,-35.1771205462698,-9.92011685468454
+"58","Median daily streamflow","Yukon (US)","Gisasa",-3.14542595105654,-17.2020591263249,11.929274121019
+"59","Body Size","Yukon (US)","Gisasa",42.8703789955183,20.7301610328804,65.6011444856062
+"60","Marine Competitors","Yukon (US)","Gisasa",-7.15664659040104,-60.8586004789346,44.4602376052305
+"61","Cross-shelf wind","Yukon (US)","Gisasa",-16.2143240253163,-28.0530764010248,-4.95561042784911
+"62","Sea Ice Cover","Yukon (US)","Gisasa",2.82322064042823,-8.23034185138649,13.5936532489292
+"63","River Ice Breakup Date","Yukon (US)","Gisasa",5.21938555670329,-10.3556044760224,20.7315784786946
+"64","Maximum daily streamflow","Yukon (US)","Gisasa",0.935275070750169,-11.5683238183707,14.7276473941155
+"65","Maximum Daily Migration Temp","Yukon (US)","Gisasa",-22.7192888779363,-36.9361752110538,-9.0841074335599
+"66","Daily stream temp","Yukon (US)","Gisasa",6.73013961521335,-4.28837712298328,18.6268412986526
+"67","Winter Sea Surface Temperature","Kuskokwim","Goodnews",19.5971466665172,8.91706399709132,29.9544910263544
+"68","Summer Sea Surface Temperature","Kuskokwim","Goodnews",-12.4583650375885,-20.710001155093,-3.21851834753907
+"69","Median daily streamflow","Kuskokwim","Goodnews",-1.7080432850556,-10.7927228130215,6.83140232544739
+"70","Body Size","Kuskokwim","Goodnews",-3.02543362169924,-22.3518836030201,17.2456171350687
+"71","Marine Competitors","Kuskokwim","Goodnews",-14.1146970754253,-36.4150509342108,7.92353015184034
+"72","Cross-shelf wind","Kuskokwim","Goodnews",1.02856782239024,-7.10821042043877,8.22860354526521
+"73","Sea Ice Cover","Kuskokwim","Goodnews",0.910441786350658,-13.6390437951833,15.808727564939
+"74","River Ice Breakup Date","Kuskokwim","Goodnews",0.940823170032251,-8.99294806114576,9.37331566492687
+"75","Maximum daily streamflow","Kuskokwim","Goodnews",4.35725924603112,-3.10517583647503,12.5152113680176
+"76","Maximum Daily Migration Temp","Kuskokwim","Goodnews",0.147111625658384,-7.40034789996408,8.03283117305769
+"77","Daily stream temp","Kuskokwim","Goodnews",-5.10661059827105,-18.9766779514487,8.05926886452882
+"78","Winter Sea Surface Temperature","Kuskokwim","Holitna",21.8496832134477,11.2027317217467,32.9669076727227
+"79","Summer Sea Surface Temperature","Kuskokwim","Holitna",-14.5850596208455,-23.5678760141974,-4.6387151286872
+"80","Median daily streamflow","Kuskokwim","Holitna",-1.26599030014646,-10.5280122159685,7.67956189793919
+"81","Body Size","Kuskokwim","Holitna",3.38409440590235,-17.7552058286366,27.427212737567
+"82","Marine Competitors","Kuskokwim","Holitna",-17.356497543436,-36.774724986465,2.45570532483841
+"83","Cross-shelf wind","Kuskokwim","Holitna",4.08752522378244,-3.8748307030274,12.0654666829819
+"84","Sea Ice Cover","Kuskokwim","Holitna",-7.54156724957079,-22.4996978222104,8.67516221531504
+"85","River Ice Breakup Date","Kuskokwim","Holitna",1.39990701934549,-8.15370395470177,9.6567049135834
+"86","Maximum daily streamflow","Kuskokwim","Holitna",2.58639319933335,-4.85838530197093,9.69725200230119
+"87","Maximum Daily Migration Temp","Kuskokwim","Holitna",-0.874751270809783,-9.46911490033639,7.58705850028215
+"88","Daily stream temp","Kuskokwim","Holitna",-8.33268779092676,-25.563420966722,7.06295442518315
+"89","Winter Sea Surface Temperature","Kuskokwim","Holokuk",29.1275732448786,16.6097067702917,44.4148091588911
+"90","Summer Sea Surface Temperature","Kuskokwim","Holokuk",-15.6420748682021,-25.8938163958995,-5.37443399377912
+"91","Median daily streamflow","Kuskokwim","Holokuk",-2.97686397813871,-14.3982231717666,6.71292297683024
+"92","Body Size","Kuskokwim","Holokuk",1.91055210710538,-20.0933638896803,27.1176568614966
+"93","Marine Competitors","Kuskokwim","Holokuk",-16.3537991480703,-37.7572294457995,4.99981103928718
+"94","Cross-shelf wind","Kuskokwim","Holokuk",2.95026240787577,-5.61299803139613,11.0185860491654
+"95","Sea Ice Cover","Kuskokwim","Holokuk",-37.9343301329994,-64.3792866505231,-14.9048704791916
+"96","River Ice Breakup Date","Kuskokwim","Holokuk",4.91458261505875,-3.78315691231804,13.5738514987788
+"97","Maximum daily streamflow","Kuskokwim","Holokuk",1.97117498559723,-6.61074572130155,10.0049730473159
+"98","Maximum Daily Migration Temp","Kuskokwim","Holokuk",-3.29037773904658,-13.8703120908008,5.87743154587934
+"99","Daily stream temp","Kuskokwim","Holokuk",-4.81627145805419,-22.4018703778473,12.4764099656658
+"100","Winter Sea Surface Temperature","Kuskokwim","Kisaralik",24.9578753119864,14.1247478922558,37.5758024105253
+"101","Summer Sea Surface Temperature","Kuskokwim","Kisaralik",-19.3403792951799,-29.9276229236502,-10.1393902994949
+"102","Median daily streamflow","Kuskokwim","Kisaralik",-3.07434471883847,-13.7611839399642,6.1935331598223
+"103","Body Size","Kuskokwim","Kisaralik",-6.17991401315997,-26.5807103656278,14.0763607072863
+"104","Marine Competitors","Kuskokwim","Kisaralik",-18.7545016714312,-39.5045941658302,1.61943459627047
+"105","Cross-shelf wind","Kuskokwim","Kisaralik",2.38155804931738,-5.83486299826564,10.1222591650225
+"106","Sea Ice Cover","Kuskokwim","Kisaralik",-4.29678716556863,-20.0478976922328,13.2290011680666
+"107","River Ice Breakup Date","Kuskokwim","Kisaralik",2.69900724755378,-6.12366290172244,11.1569733340888
+"108","Maximum daily streamflow","Kuskokwim","Kisaralik",2.79583376426794,-5.26841698779811,10.5985045830456
+"109","Maximum Daily Migration Temp","Kuskokwim","Kisaralik",2.54714151290541,-6.06888338715997,12.4972768675943
+"110","Daily stream temp","Kuskokwim","Kisaralik",-5.94979139966772,-22.1915140964649,9.45965603708284
+"111","Winter Sea Surface Temperature","Kuskokwim","Kogrukluk",24.8652798760519,15.6607126966096,35.3279217710305
+"112","Summer Sea Surface Temperature","Kuskokwim","Kogrukluk",-17.3758259083693,-25.5813762100035,-10.0818645289699
+"113","Median daily streamflow","Kuskokwim","Kogrukluk",-0.680345334513643,-8.16086959337019,6.50021145236488
+"114","Body Size","Kuskokwim","Kogrukluk",-14.4803916229014,-34.0037575013938,4.18523532218613
+"115","Marine Competitors","Kuskokwim","Kogrukluk",-13.5757287889656,-30.6263202895649,4.05950114344437
+"116","Cross-shelf wind","Kuskokwim","Kogrukluk",4.4462669552678,-2.14590852596447,10.9844070290785
+"117","Sea Ice Cover","Kuskokwim","Kogrukluk",-22.9323336521757,-34.1617708929448,-12.0114126479284
+"118","River Ice Breakup Date","Kuskokwim","Kogrukluk",4.34173370464434,-2.8576394895419,11.560002183735
+"119","Maximum daily streamflow","Kuskokwim","Kogrukluk",4.60679994905035,-1.69200662863537,11.2394961750463
+"120","Maximum Daily Migration Temp","Kuskokwim","Kogrukluk",5.28550343717435,-3.02568216276446,14.5366125597642
+"121","Daily stream temp","Kuskokwim","Kogrukluk",-4.60252648802284,-15.5080353797199,6.10340556090665
+"122","Winter Sea Surface Temperature","Kuskokwim","Kwethluk",31.1124567317345,18.9708229503235,45.5175785325565
+"123","Summer Sea Surface Temperature","Kuskokwim","Kwethluk",-23.1317572398608,-33.9454888697284,-13.6682344905546
+"124","Median daily streamflow","Kuskokwim","Kwethluk",-0.177162543000297,-8.65767267794149,8.19103903234941
+"125","Body Size","Kuskokwim","Kwethluk",3.14691605367696,-17.4306297251769,25.9109761281684
+"126","Marine Competitors","Kuskokwim","Kwethluk",-10.2699937266435,-31.1767717671833,12.3026612405257
+"127","Cross-shelf wind","Kuskokwim","Kwethluk",1.17820099704817,-7.10313085186644,8.81839100712281
+"128","Sea Ice Cover","Kuskokwim","Kwethluk",-25.4196445576791,-37.9525219076647,-13.0502893439802
+"129","River Ice Breakup Date","Kuskokwim","Kwethluk",3.93296956042289,-3.8994261507229,11.8018915584952
+"130","Maximum daily streamflow","Kuskokwim","Kwethluk",3.31814284032941,-3.61665735856223,10.3161439998139
+"131","Maximum Daily Migration Temp","Kuskokwim","Kwethluk",2.55798946219321,-5.38329106433731,10.8849570279535
+"132","Daily stream temp","Kuskokwim","Kwethluk",-18.5194573004904,-34.3620361463574,-2.68808684903921
+"133","Winter Sea Surface Temperature","Yukon (CA)","Lower Mainstem",14.9970802064777,5.62477742207745,24.8331689713123
+"134","Summer Sea Surface Temperature","Yukon (CA)","Lower Mainstem",-6.25099772224933,-19.2350190121226,4.39259469077549
+"135","Median daily streamflow","Yukon (CA)","Lower Mainstem",-2.8463663722276,-12.3916130521361,6.42471507258806
+"136","Body Size","Yukon (CA)","Lower Mainstem",28.0893325771671,18.4989746108213,39.1391858656296
+"137","Marine Competitors","Yukon (CA)","Lower Mainstem",-33.5031480231432,-62.4676575647629,-6.92414104196654
+"138","Cross-shelf wind","Yukon (CA)","Lower Mainstem",-6.86709605957108,-16.9911485282143,2.34350190290171
+"139","Sea Ice Cover","Yukon (CA)","Lower Mainstem",-6.81114401785334,-13.8112455944336,0.156961650052179
+"140","River Ice Breakup Date","Yukon (CA)","Lower Mainstem",-8.25591083341402,-18.1341082260285,1.89468325050191
+"141","Maximum daily streamflow","Yukon (CA)","Lower Mainstem",-13.3816401640161,-28.2334202130193,0.663163677816317
+"142","Maximum Daily Migration Temp","Yukon (CA)","Lower Mainstem",-2.56787793320405,-15.6451983793311,11.4230267361742
+"143","Daily stream temp","Yukon (CA)","Lower Mainstem",3.71898268983725,-8.40669600255113,19.2015327699516
+"144","Winter Sea Surface Temperature","Yukon (CA)","Mid Mainstem",13.1159038664939,4.55282416254952,22.1260247442282
+"145","Summer Sea Surface Temperature","Yukon (CA)","Mid Mainstem",1.18034609333073,-8.46339375611154,11.8024163346032
+"146","Median daily streamflow","Yukon (CA)","Mid Mainstem",-4.98909884565306,-16.4057846015345,5.51612005572901
+"147","Body Size","Yukon (CA)","Mid Mainstem",23.8656853026207,14.4950893606048,33.1201162268011
+"148","Marine Competitors","Yukon (CA)","Mid Mainstem",-46.6027006923327,-77.9515597654652,-16.193071933463
+"149","Cross-shelf wind","Yukon (CA)","Mid Mainstem",0.420129410812545,-9.51480670029977,11.7537588902796
+"150","Sea Ice Cover","Yukon (CA)","Mid Mainstem",-4.71919130859724,-11.7747069843927,3.0329305710858
+"151","River Ice Breakup Date","Yukon (CA)","Mid Mainstem",-13.5757863534281,-24.4663950057041,-3.33070145251231
+"152","Maximum daily streamflow","Yukon (CA)","Mid Mainstem",-18.9910806232213,-33.7845313616447,-5.42956898338116
+"153","Maximum Daily Migration Temp","Yukon (CA)","Mid Mainstem",5.32914916590774,-10.6681604427592,20.9685215962103
+"154","Daily stream temp","Yukon (CA)","Mid Mainstem",-0.17802082184619,-11.7489851258524,12.1078658455946
+"155","Winter Sea Surface Temperature","Kuskokwim","Oskawalik",23.5627266156806,12.6027222867962,35.4286867158825
+"156","Summer Sea Surface Temperature","Kuskokwim","Oskawalik",-15.2228399601048,-25.2051200565278,-4.7774004787648
+"157","Median daily streamflow","Kuskokwim","Oskawalik",-1.50311963790428,-11.6148134084592,7.81457474962229
+"158","Body Size","Kuskokwim","Oskawalik",-1.00003343497242,-22.5790057275754,22.0069848964361
+"159","Marine Competitors","Kuskokwim","Oskawalik",-13.2963318119575,-33.8809669945,8.61301756928053
+"160","Cross-shelf wind","Kuskokwim","Oskawalik",3.16719752872814,-5.01275312461611,11.1476644913352
+"161","Sea Ice Cover","Kuskokwim","Oskawalik",-32.6938879837247,-55.7985155408819,-12.5860389129869
+"162","River Ice Breakup Date","Kuskokwim","Oskawalik",4.34043798700296,-4.07623222146427,12.7858843797263
+"163","Maximum daily streamflow","Kuskokwim","Oskawalik",2.13428423555239,-6.27126993282219,9.88210447732169
+"164","Maximum Daily Migration Temp","Kuskokwim","Oskawalik",-2.87617640692225,-12.8972933418443,5.8949186850634
+"165","Daily stream temp","Kuskokwim","Oskawalik",-5.68765008077366,-24.5990797652953,11.5068998825585
+"166","Winter Sea Surface Temperature","Yukon (CA)","Pelly",12.0530911537325,3.49609658220374,20.6419398650596
+"167","Summer Sea Surface Temperature","Yukon (CA)","Pelly",-2.83353145342873,-11.6903661959828,5.98962688416854
+"168","Median daily streamflow","Yukon (CA)","Pelly",-2.05297510894102,-11.4391796148779,7.03802881646787
+"169","Body Size","Yukon (CA)","Pelly",22.7284817239135,14.0846882459241,31.0580867633268
+"170","Marine Competitors","Yukon (CA)","Pelly",-10.1534959574082,-30.9087680768789,11.5929661526207
+"171","Cross-shelf wind","Yukon (CA)","Pelly",-6.12424276831048,-14.9465908167015,2.88105796263424
+"172","Sea Ice Cover","Yukon (CA)","Pelly",-8.2356493396722,-14.8779096338398,-1.85812252495932
+"173","River Ice Breakup Date","Yukon (CA)","Pelly",-10.431839496179,-19.5503282740193,-0.938803466179614
+"174","Maximum daily streamflow","Yukon (CA)","Pelly",-11.098528163949,-21.3870958977392,-0.754508536591377
+"175","Maximum Daily Migration Temp","Yukon (CA)","Pelly",-17.1298690086083,-27.7965823916865,-6.8955530367145
+"176","Daily stream temp","Yukon (CA)","Pelly",0.762747603749827,-9.25878802009778,11.4234763408048
+"177","Winter Sea Surface Temperature","Kuskokwim","Pitka",19.2091757848655,6.5923791142177,30.8750488400015
+"178","Summer Sea Surface Temperature","Kuskokwim","Pitka",-17.2134753058044,-27.196090271461,-7.95826611220997
+"179","Median daily streamflow","Kuskokwim","Pitka",-0.808922075202581,-9.81154585854744,7.64246219363992
+"180","Body Size","Kuskokwim","Pitka",-7.19500813335598,-29.0071748907075,14.0074551690789
+"181","Marine Competitors","Kuskokwim","Pitka",-13.3678467035242,-33.9462196861082,8.68142086271504
+"182","Cross-shelf wind","Kuskokwim","Pitka",2.31429103271124,-6.10642704998427,10.1124625628519
+"183","Sea Ice Cover","Kuskokwim","Pitka",-3.2255953172654,-16.6519330790572,11.3305460103967
+"184","River Ice Breakup Date","Kuskokwim","Pitka",5.07356155930106,-3.12092288102759,13.7469866731776
+"185","Maximum daily streamflow","Kuskokwim","Pitka",4.13661148907718,-3.1808544261891,12.1996054450349
+"186","Maximum Daily Migration Temp","Kuskokwim","Pitka",-0.854678276957357,-9.29351172874988,7.28576956318286
+"187","Daily stream temp","Kuskokwim","Pitka",1.15263266521117,-13.138810657184,15.5691744441319
+"188","Winter Sea Surface Temperature","Yukon (US)","Salcha",24.1793744549679,13.1654167356857,36.1428478200894
+"189","Summer Sea Surface Temperature","Yukon (US)","Salcha",-10.5740711113568,-21.8982230314725,1.65010957138374
+"190","Median daily streamflow","Yukon (US)","Salcha",-10.3852046273385,-21.471081003541,0.37559020591984
+"191","Body Size","Yukon (US)","Salcha",34.3023491579311,16.869303474444,51.788733466711
+"192","Marine Competitors","Yukon (US)","Salcha",-51.002946492008,-87.8352248894211,-14.8928399266128
+"193","Cross-shelf wind","Yukon (US)","Salcha",-9.90841048343072,-18.319606924012,-1.55156344566628
+"194","Sea Ice Cover","Yukon (US)","Salcha",-4.56321136297943,-14.424351723451,5.07742733343109
+"195","River Ice Breakup Date","Yukon (US)","Salcha",-13.0949179858153,-23.4364208982078,-2.35778057702222
+"196","Maximum daily streamflow","Yukon (US)","Salcha",-6.11348847399403,-15.7774599761513,3.15624336564961
+"197","Maximum Daily Migration Temp","Yukon (US)","Salcha",-15.17159357899,-26.2019219806552,-3.87448147284917
+"198","Daily stream temp","Yukon (US)","Salcha",-0.448056825148961,-11.2598449274929,9.48779584168372
+"199","Winter Sea Surface Temperature","Yukon (CA)","Stewart",11.7486761845517,2.96529649161908,20.4728773429261
+"200","Summer Sea Surface Temperature","Yukon (CA)","Stewart",3.55670134713121,-7.09278959863288,15.2372019429347
+"201","Median daily streamflow","Yukon (CA)","Stewart",-4.98240761172253,-15.5974523779014,4.43440291327053
+"202","Body Size","Yukon (CA)","Stewart",25.6571063495318,16.828285526323,34.8934674319537
+"203","Marine Competitors","Yukon (CA)","Stewart",-3.98708916521732,-30.2295105864551,23.1991022909709
+"204","Cross-shelf wind","Yukon (CA)","Stewart",1.30672139936392,-8.80449964355232,12.8294361761543
+"205","Sea Ice Cover","Yukon (CA)","Stewart",-6.73382787856301,-13.3870709024992,-0.0700275890540044
+"206","River Ice Breakup Date","Yukon (CA)","Stewart",-9.76242350252723,-19.556279987479,0.12233354566148
+"207","Maximum daily streamflow","Yukon (CA)","Stewart",-6.51272818055894,-17.5586041699078,4.64059174516886
+"208","Maximum Daily Migration Temp","Yukon (CA)","Stewart",-25.1837503063177,-40.2008820480134,-10.9111308444661
+"209","Daily stream temp","Yukon (CA)","Stewart",-3.86869153255847,-14.6668076447426,6.89711106072481
+"210","Winter Sea Surface Temperature","Kuskokwim","Swift",21.1916188691886,9.57717661615062,31.9396781401328
+"211","Summer Sea Surface Temperature","Kuskokwim","Swift",-18.8901006214307,-29.829868037444,-9.94806977116319
+"212","Median daily streamflow","Kuskokwim","Swift",1.22378914564299,-7.49093690869347,10.5253910020869
+"213","Body Size","Kuskokwim","Swift",-5.21581052369243,-24.6912244675232,14.1188661283617
+"214","Marine Competitors","Kuskokwim","Swift",-17.0172704711102,-36.3001425761976,2.34057891771628
+"215","Cross-shelf wind","Kuskokwim","Swift",4.83658571670715,-2.73092515378264,12.862926407945
+"216","Sea Ice Cover","Kuskokwim","Swift",-22.9195758354055,-38.2309732129212,-8.88963753226221
+"217","River Ice Breakup Date","Kuskokwim","Swift",3.24797440041659,-5.20040745107401,11.2659244722629
+"218","Maximum daily streamflow","Kuskokwim","Swift",2.84068419889071,-4.87321707937811,10.082051176651
+"219","Maximum Daily Migration Temp","Kuskokwim","Swift",-2.33578293362306,-11.2359880495935,5.70696889921404
+"220","Daily stream temp","Kuskokwim","Swift",-8.34077800743537,-23.5725263836869,5.46016731561113
+"221","Winter Sea Surface Temperature","Kuskokwim","Takotna",19.4289607159979,9.88934378165468,28.1997226213958
+"222","Summer Sea Surface Temperature","Kuskokwim","Takotna",-13.4846631692628,-20.8034033597771,-5.96152732765403
+"223","Median daily streamflow","Kuskokwim","Takotna",2.29997939808809,-6.82087867317192,11.9517532411226
+"224","Body Size","Kuskokwim","Takotna",-4.29143411343609,-24.3007074805424,15.9800917595224
+"225","Marine Competitors","Kuskokwim","Takotna",-17.7791650368475,-39.4017376587644,3.1752557810611
+"226","Cross-shelf wind","Kuskokwim","Takotna",6.83509847442678,-0.774412132945633,15.2135279584171
+"227","Sea Ice Cover","Kuskokwim","Takotna",-11.5911222049005,-21.082609532483,-1.95078650129971
+"228","River Ice Breakup Date","Kuskokwim","Takotna",4.79961230713746,-2.71556788176304,12.6089484644791
+"229","Maximum daily streamflow","Kuskokwim","Takotna",2.19105208630713,-5.28545535546951,9.00285840692197
+"230","Maximum Daily Migration Temp","Kuskokwim","Takotna",-3.81472606063535,-13.1033853255029,4.15450705742878
+"231","Daily stream temp","Kuskokwim","Takotna",3.67442664354175,-7.46324731990148,15.2830257613501
+"232","Winter Sea Surface Temperature","Kuskokwim","Tatlawiksuk",19.2896994976356,9.33892600009998,28.4492639467118
+"233","Summer Sea Surface Temperature","Kuskokwim","Tatlawiksuk",-12.9705854421918,-20.2842677184717,-5.11974633888955
+"234","Median daily streamflow","Kuskokwim","Tatlawiksuk",0.416620790503636,-7.83639626254772,8.57477448465432
+"235","Body Size","Kuskokwim","Tatlawiksuk",-3.41513267208338,-22.6775391012396,16.5021375529258
+"236","Marine Competitors","Kuskokwim","Tatlawiksuk",-12.6682387215623,-32.6425036480486,8.46185749671254
+"237","Cross-shelf wind","Kuskokwim","Tatlawiksuk",2.55954886509464,-5.2944369859488,9.83469711630067
+"238","Sea Ice Cover","Kuskokwim","Tatlawiksuk",-4.98655700617698,-14.5730258809545,4.61838725704054
+"239","River Ice Breakup Date","Kuskokwim","Tatlawiksuk",4.53949036196476,-2.86829608417876,12.0689016522415
+"240","Maximum daily streamflow","Kuskokwim","Tatlawiksuk",4.39177147429393,-1.96291453123783,11.1019356345005
+"241","Maximum Daily Migration Temp","Kuskokwim","Tatlawiksuk",-1.95234259015102,-9.7321850065747,5.41398704625464
+"242","Daily stream temp","Kuskokwim","Tatlawiksuk",-4.5550461463557,-14.8168908554201,5.86102980007693
+"243","Winter Sea Surface Temperature","Yukon (CA)","Teslin",11.870206404091,2.98923725010606,20.7562151614561
+"244","Summer Sea Surface Temperature","Yukon (CA)","Teslin",-1.38534006334657,-11.6309113706656,8.36610184952119
+"245","Median daily streamflow","Yukon (CA)","Teslin",1.40733483258035,-8.54500376893976,11.914960488639
+"246","Body Size","Yukon (CA)","Teslin",24.7764470546441,15.6944122767739,34.0819077082029
+"247","Marine Competitors","Yukon (CA)","Teslin",-8.02714051559419,-31.2059085571885,16.9607848400142
+"248","Cross-shelf wind","Yukon (CA)","Teslin",-4.43556442691056,-13.4792921473637,4.28314636704274
+"249","Sea Ice Cover","Yukon (CA)","Teslin",-6.91246399394109,-13.6933906712727,-0.438660625044794
+"250","River Ice Breakup Date","Yukon (CA)","Teslin",-9.05501481729064,-19.0679145917287,1.06383494676608
+"251","Maximum daily streamflow","Yukon (CA)","Teslin",-2.90940009652848,-16.10087445292,10.9098793034757
+"252","Maximum Daily Migration Temp","Yukon (CA)","Teslin",-6.2876033439806,-18.9114069599235,6.87920026668046
+"253","Daily stream temp","Yukon (CA)","Teslin",-5.07830312863509,-16.3145353042038,5.63377106153556
+"254","Winter Sea Surface Temperature","Kuskokwim","Tuluksak",23.8870997248545,14.4560502587962,34.4268747520549
+"255","Summer Sea Surface Temperature","Kuskokwim","Tuluksak",-18.6330598593597,-26.8511668465645,-10.8133451155325
+"256","Median daily streamflow","Kuskokwim","Tuluksak",4.55908615944692,-4.82867581400467,15.785364895457
+"257","Body Size","Kuskokwim","Tuluksak",4.21502415726021,-16.780977829131,28.0494933685638
+"258","Marine Competitors","Kuskokwim","Tuluksak",-11.2351215987455,-31.9938365714547,11.394525346869
+"259","Cross-shelf wind","Kuskokwim","Tuluksak",5.8239063104054,-1.7180650225562,13.9847305377469
+"260","Sea Ice Cover","Kuskokwim","Tuluksak",-8.14235180748086,-19.2784081507827,2.88628150587962
+"261","River Ice Breakup Date","Kuskokwim","Tuluksak",2.91143483399749,-5.52756570363535,11.2975305028161
+"262","Maximum daily streamflow","Kuskokwim","Tuluksak",4.98461085482906,-2.4588079057744,13.7538170878587
+"263","Maximum Daily Migration Temp","Kuskokwim","Tuluksak",-4.56915957952116,-13.756784482005,3.43388681864494
+"264","Daily stream temp","Kuskokwim","Tuluksak",-12.361348448448,-26.914609129336,1.97958135916928
+"265","Winter Sea Surface Temperature","Yukon (CA)","Upper Lakes Mainstem",14.2249274827212,4.74658214292463,23.913661118123
+"266","Summer Sea Surface Temperature","Yukon (CA)","Upper Lakes Mainstem",5.65837402009218,-5.81879583400449,19.8636683958546
+"267","Median daily streamflow","Yukon (CA)","Upper Lakes Mainstem",-3.48097177033693,-13.4991491268785,5.88811472001304
+"268","Body Size","Yukon (CA)","Upper Lakes Mainstem",26.0386744187565,16.5691494967181,36.2185525648623
+"269","Marine Competitors","Yukon (CA)","Upper Lakes Mainstem",-50.3466943735329,-86.9194080957471,-16.1570085576533
+"270","Cross-shelf wind","Yukon (CA)","Upper Lakes Mainstem",-5.56604724089686,-15.3389789419464,3.6524998091102
+"271","Sea Ice Cover","Yukon (CA)","Upper Lakes Mainstem",-5.2523511246314,-12.3632131374939,2.32787681107421
+"272","River Ice Breakup Date","Yukon (CA)","Upper Lakes Mainstem",-12.9502321991421,-23.8267283013853,-2.50682219498405
+"273","Maximum daily streamflow","Yukon (CA)","Upper Lakes Mainstem",-18.2419133358765,-33.9527595496234,-4.01302605909408
+"274","Maximum Daily Migration Temp","Yukon (CA)","Upper Lakes Mainstem",0.498930860635366,-14.9230510305479,17.5213820442907
+"275","Daily stream temp","Yukon (CA)","Upper Lakes Mainstem",-1.67386572400398,-12.8173940381995,10.7743535454745
+"276","Winter Sea Surface Temperature","Yukon (CA)","White-Donjek",11.7356822270076,2.66060512089385,20.4350677169405
+"277","Summer Sea Surface Temperature","Yukon (CA)","White-Donjek",-2.49555708704091,-12.1952141730772,7.28180884868528
+"278","Median daily streamflow","Yukon (CA)","White-Donjek",-0.856794047820468,-9.2873928546505,7.42910692648436
+"279","Body Size","Yukon (CA)","White-Donjek",24.5951227432713,15.737248341781,33.6144663147209
+"280","Marine Competitors","Yukon (CA)","White-Donjek",0.895139968779251,-23.2490159316576,27.4774546917618
+"281","Cross-shelf wind","Yukon (CA)","White-Donjek",-3.9999723518478,-13.0567475062829,4.77320109688519
+"282","Sea Ice Cover","Yukon (CA)","White-Donjek",-8.16676789888137,-15.387072132262,-1.37958216407126
+"283","River Ice Breakup Date","Yukon (CA)","White-Donjek",-9.2374637152949,-18.7697568324785,0.928768767055361
+"284","Maximum daily streamflow","Yukon (CA)","White-Donjek",-15.3484292891158,-26.8460864979125,-4.19880108258465
+"285","Maximum Daily Migration Temp","Yukon (CA)","White-Donjek",-29.5099708367263,-44.9224232369342,-13.2451713984398
+"286","Daily stream temp","Yukon (CA)","White-Donjek",-5.28214796880949,-14.8014023046266,4.09320358562579

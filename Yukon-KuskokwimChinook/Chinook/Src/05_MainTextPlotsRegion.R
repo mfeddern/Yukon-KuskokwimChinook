@@ -147,6 +147,13 @@ tableS7<-group.levels%>%filter(Param=="mu_coef")%>%
 write.csv(tableS7,"Chinook/Output/Tables/TableS7.csv")
 
 
+colnames(group.levels)
+tablePop<-df.levels%>%
+  select(Covar.Name, region,pop, mean, lower.80, upper.80)%>%
+  mutate(mean=mean*100,lower.80=lower.80*100, upper.80=upper.80*100)
+write.csv(tablePop,"Chinook/Output/Tables/TableS7Population.csv")
+
+
 ### Figure 3c Mean Effect ###
 dodge<-0.1
 Param.Name <- unique(group.levels$Param.Name)
@@ -261,7 +268,7 @@ thetaplot<- ggplot(data = df.levels,
     geom_vline(xintercept = 0, linetype = "dashed") +
     scale_y_discrete(name = "Population Unit")+
     scale_x_continuous(name = "Covariate Coefficient")+
-    geom_errorbar(aes(xmin=lower.95, xmax=upper.95),width = 0, size=0.25)+
+    geom_errorbar(aes(xmin=lower.80, xmax=upper.80),width = 0, size=0.25)+
     geom_errorbar(aes(xmin=lower.50, xmax=upper.50,col=region), width = 0, size=0.75)+
     theme_bw()+
     labs(col = "Region")+

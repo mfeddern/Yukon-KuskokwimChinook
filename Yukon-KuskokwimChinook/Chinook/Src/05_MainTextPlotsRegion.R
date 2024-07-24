@@ -66,10 +66,10 @@ levels(full.dat.wide.levels$pop) <-
 ##### Figure 2 Plotting Productivity Time series ####
 lumina<-nord(n = 8, palette = "lumina")
 full.dat.wide.levels$sr.CV*full.dat.wide.levels$ln.sr
-prod.time <- ggplot(data = full.dat.wide.levels, aes(x = year, y = log(recruits/spawners), color=region)) +
+prod.time <- ggplot(data = full.dat.wide.levels, aes(x = year, y = log(recruits/spawners), shape=region,color=region)) +
   geom_ribbon(alpha=0.2,linetype = 0,aes(ymin=(log(recruits/spawners)-2*sqrt(spawn.SDlog^2+rec.SDlog^2)), ymax=log(recruits/spawners)+2*sqrt(spawn.SDlog^2+rec.SDlog^2)))+
-  geom_point(size=0.75) +
-  geom_line() +
+  geom_point(size=1.5, aes(shape=region)) +
+  geom_line(aes(linetype=region)) +
   scale_color_manual(values =  c(lumina[3],lumina[4],lumina[7]), name="Subregion")+
   geom_hline(yintercept = 0, lty = "dotted") +
   facet_wrap(.~pop, scales="free_y",ncol = 3) +
@@ -85,9 +85,10 @@ prod.time <- ggplot(data = full.dat.wide.levels, aes(x = year, y = log(recruits/
         legend.text=element_text(size=14), #change font size of legend text
         strip.text = element_text(size=14), #facet label
         legend.title=element_text(size=16))+
+  labs(color  = "Subregion", linetype = "Subregion", shape = "Subregion")+
   scale_y_continuous(name = "Productivity Index (ln[R/S])")
-
-pdf(file = "Chinook/Output/Figures/MainText/Figure2_ProductivityTimeSeries.pdf",   # The directory you want to save the file in
+prod.time
+pdf(file = "Chinook/Output/Figures/MainText/Figure2_ProductivityTimeSeries2.pdf",   # The directory you want to save the file in
     width = 8, # The width of the plot in inches
     height = 10)
 prod.time
@@ -156,22 +157,27 @@ write.csv(tablePop,"Chinook/Output/Tables/TableS7Population.csv")
 
 ### Figure 3c Mean Effect ###
 dodge<-0.1
+shapes<-c(8,21,22,23,24,25) 
+
 Param.Name <- unique(group.levels$Param.Name)
 regions<-unique(group.posteriors$Region)
 Kuskokwim<-ggplot(data = group.levels%>%filter(Param==names.params[1], Region==regions[1]),
               aes(x =mean, y = reorder(Covar.Name, desc(Covar.Name)), group=Lifestage)) +
   ggtitle(str_wrap(paste("A. Kuskokwim"), width = 20))+
+  scale_fill_manual(values = Aurora2, breaks =breaks)+
   scale_color_manual(values = Aurora2, breaks =breaks)+
+  scale_shape_manual(values = shapes, breaks =breaks)+
   geom_vline(xintercept = 0, linetype = "dashed") +
   scale_y_discrete(name = "Covariate", labels = function(y) str_wrap(y, width = 20))+
   scale_x_continuous(name = "Covariate Coefficient")+
-  geom_errorbar(aes(xmin=lower.95, xmax=upper.95),width = 0, size=0.25,
+  geom_errorbar(aes(xmin=lower.80, xmax=upper.80),width = 0, size=0.25,
                 position=position_dodge(width=dodge))+
-  geom_errorbar(aes(xmin=lower.80, xmax=upper.80, col=Lifestage),
+  geom_errorbar(aes(xmin=lower.50, xmax=upper.50, col=Lifestage),
                 width = 0, size=1.25, position=position_dodge(width=dodge))+
-  geom_point(aes(col = Lifestage),size = 2.5, position=position_dodge(width=dodge))+
+  geom_point(aes(fill = Lifestage,  shape=Lifestage, col = Lifestage),size = 3.5, position=position_dodge(width=dodge))+
   theme_bw()+
- # xlim(c(-1,0.5))+
+  #xlim(c(-1,0.5))+
+  labs(shape = "Life Stage", fill = "Life Stage", col = "Life Stage") +
   theme(plot.title = element_text(hjust = 0.5, size=16),
         plot.subtitle = element_text(hjust = 0.5, size=14),
         axis.title.x = element_blank(),
@@ -179,50 +185,53 @@ Kuskokwim<-ggplot(data = group.levels%>%filter(Param==names.params[1], Region==r
         axis.title.y = element_text(size = 16),
         axis.text.y = element_text(size = 14, hjust = 0.5),
         legend.position="none"
-  )+
-  labs(col = "Region")
+  )
 
 YukonUS<-ggplot(data = group.levels%>%filter(Param==names.params[1], Region==regions[3]),
                   aes(x =mean, y = reorder(Covar.Name, desc(Covar.Name)), group=Lifestage)) +
   ggtitle(str_wrap(paste("B. Yukon (US)"), width = 20))+
+  scale_fill_manual(values = Aurora2, breaks =breaks)+
   scale_color_manual(values = Aurora2, breaks =breaks)+
+  scale_shape_manual(values = shapes, breaks =breaks)+
   geom_vline(xintercept = 0, linetype = "dashed") +
   scale_y_discrete(name = "Covariate", labels = function(y) str_wrap(y, width = 20))+
   scale_x_continuous(name = "Covariate Coefficient")+
-  geom_errorbar(aes(xmin=lower.95, xmax=upper.95),width = 0, size=0.25,
+  geom_errorbar(aes(xmin=lower.80, xmax=upper.80),width = 0, size=0.25,
                 position=position_dodge(width=dodge))+
-  geom_errorbar(aes(xmin=lower.80, xmax=upper.80, col=Lifestage),
-                width = 0, size=1.25, position=position_dodge(width=dodge))+
-  geom_point(aes(col = Lifestage),size = 2.5, position=position_dodge(width=dodge))+
+ geom_errorbar(aes(xmin=lower.50, xmax=upper.50, col=Lifestage),
+              width = 0, size=1.25, position=position_dodge(width=dodge))+
+  geom_point(aes(fill = Lifestage,  shape=Lifestage, col = Lifestage),size = 3.5, position=position_dodge(width=dodge))+
   theme_bw()+
-#  xlim(c(-1.25,0.5))+
+  #xlim(c(-1,0.5))+
+  labs(shape = "Life Stage", fill = "Life Stage", col = "Life Stage") +
   theme(plot.title = element_text(hjust = 0.5, size=16),
         plot.subtitle = element_text(hjust = 0.5, size=14),
         axis.title.x = element_blank(),
         axis.text.x = element_text(size = 14),
         axis.title.y = element_blank(),
         axis.text.y =element_blank(),
-        legend.text=element_text(size=14,),
-        legend.title=element_text(size=14),
-        legend.position="none"
-  )+
-  labs(col = "Region")
-
+        legend.text=element_text(size=14),
+        legend.title=element_text(size=16),
+        legend.position='none'
+  )
 
 YukonCA<- ggplot(data = group.levels%>%filter(Param==names.params[1], Region==regions[2]),
        aes(x =mean, y = reorder(Covar.Name, desc(Covar.Name)), group=Lifestage)) +
   ggtitle(str_wrap(paste("C. Yukon (CA)"), width = 20))+
+  scale_fill_manual(values = Aurora2, breaks =breaks)+
   scale_color_manual(values = Aurora2, breaks =breaks)+
+  scale_shape_manual(values = shapes, breaks =breaks)+
   geom_vline(xintercept = 0, linetype = "dashed") +
   scale_y_discrete(name = "Covariate", labels = function(y) str_wrap(y, width = 20))+
   scale_x_continuous(name = "Covariate Coefficient")+
-  geom_errorbar(aes(xmin=lower.95, xmax=upper.95),width = 0, size=0.25,
+  geom_errorbar(aes(xmin=lower.80, xmax=upper.80),width = 0, size=0.25,
                 position=position_dodge(width=dodge))+
-  geom_errorbar(aes(xmin=lower.80, xmax=upper.80, col=Lifestage),
-                width = 0, size=1.25, position=position_dodge(width=dodge))+
-  geom_point(aes(col = Lifestage),size = 2.5, position=position_dodge(width=dodge))+
+ geom_errorbar(aes(xmin=lower.50, xmax=upper.50, col=Lifestage),
+              width = 0, size=1.25, position=position_dodge(width=dodge))+
+  geom_point(aes(fill = Lifestage,  col=Lifestage,shape=Lifestage),size = 3.5, position=position_dodge(width=dodge))+
   theme_bw()+
   #xlim(c(-1,0.5))+
+  labs(shape = "Life Stage", fill = "Life Stage", col = "Life Stage") +
   theme(plot.title = element_text(hjust = 0.5, size=16),
         plot.subtitle = element_text(hjust = 0.5, size=14),
         axis.title.x = element_blank(),
@@ -231,13 +240,12 @@ YukonCA<- ggplot(data = group.levels%>%filter(Param==names.params[1], Region==re
         axis.text.y =element_blank(),
         legend.text=element_text(size=14),
         legend.title=element_text(size=16)
-  )+
-  labs(col = "Region")
-
+  )
+YukonCA
 arranged <- ggarrange(Kuskokwim,YukonUS,YukonCA, widths=c(2,1.25,2.5),ncol = 3, nrow = 1)
 
-
-pdf(file = "Chinook/Output/Figures/MainText/Figure3_MeanCov95.pdf",   # The directory you want to save the file in
+arranged
+pdf(file = "Chinook/Output/Figures/MainText/Figure3_MeanCov2.pdf",   # The directory you want to save the file in
     width = 14, # The width of the plot in inches
     height = 7)
 annotate_figure(arranged,bottom = text_grob("Covariate Coefficient", size=16))

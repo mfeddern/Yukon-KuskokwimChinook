@@ -165,9 +165,9 @@ Kuskokwim<-ggplot(data = group.levels%>%filter(Param==names.params[1], Region==r
   geom_vline(xintercept = 0, linetype = "dashed") +
   scale_y_discrete(name = "Covariate", labels = function(y) str_wrap(y, width = 20))+
   scale_x_continuous(name = "Covariate Coefficient")+
-  geom_errorbar(aes(xmin=lower.80, xmax=upper.80),width = 0, size=0.25,
+  geom_errorbar(aes(xmin=lower.95, xmax=upper.95),width = 0, size=0.25,
                 position=position_dodge(width=dodge))+
-  geom_errorbar(aes(xmin=lower.50, xmax=upper.50, col=Lifestage),
+  geom_errorbar(aes(xmin=lower.80, xmax=upper.80, col=Lifestage),
                 width = 0, size=1.25, position=position_dodge(width=dodge))+
   geom_point(aes(col = Lifestage),size = 2.5, position=position_dodge(width=dodge))+
   theme_bw()+
@@ -189,9 +189,9 @@ YukonUS<-ggplot(data = group.levels%>%filter(Param==names.params[1], Region==reg
   geom_vline(xintercept = 0, linetype = "dashed") +
   scale_y_discrete(name = "Covariate", labels = function(y) str_wrap(y, width = 20))+
   scale_x_continuous(name = "Covariate Coefficient")+
-  geom_errorbar(aes(xmin=lower.80, xmax=upper.80),width = 0, size=0.25,
+  geom_errorbar(aes(xmin=lower.95, xmax=upper.95),width = 0, size=0.25,
                 position=position_dodge(width=dodge))+
-  geom_errorbar(aes(xmin=lower.50, xmax=upper.50, col=Lifestage),
+  geom_errorbar(aes(xmin=lower.80, xmax=upper.80, col=Lifestage),
                 width = 0, size=1.25, position=position_dodge(width=dodge))+
   geom_point(aes(col = Lifestage),size = 2.5, position=position_dodge(width=dodge))+
   theme_bw()+
@@ -216,9 +216,9 @@ YukonCA<- ggplot(data = group.levels%>%filter(Param==names.params[1], Region==re
   geom_vline(xintercept = 0, linetype = "dashed") +
   scale_y_discrete(name = "Covariate", labels = function(y) str_wrap(y, width = 20))+
   scale_x_continuous(name = "Covariate Coefficient")+
-  geom_errorbar(aes(xmin=lower.80, xmax=upper.80),width = 0, size=0.25,
+  geom_errorbar(aes(xmin=lower.95, xmax=upper.95),width = 0, size=0.25,
                 position=position_dodge(width=dodge))+
-  geom_errorbar(aes(xmin=lower.50, xmax=upper.50, col=Lifestage),
+  geom_errorbar(aes(xmin=lower.80, xmax=upper.80, col=Lifestage),
                 width = 0, size=1.25, position=position_dodge(width=dodge))+
   geom_point(aes(col = Lifestage),size = 2.5, position=position_dodge(width=dodge))+
   theme_bw()+
@@ -237,7 +237,7 @@ YukonCA<- ggplot(data = group.levels%>%filter(Param==names.params[1], Region==re
 arranged <- ggarrange(Kuskokwim,YukonUS,YukonCA, widths=c(2,1.25,2.5),ncol = 3, nrow = 1)
 
 
-pdf(file = "Chinook/Output/Figures/MainText/Figure3_MeanCov.pdf",   # The directory you want to save the file in
+pdf(file = "Chinook/Output/Figures/MainText/Figure3_MeanCov95.pdf",   # The directory you want to save the file in
     width = 14, # The width of the plot in inches
     height = 7)
 annotate_figure(arranged,bottom = text_grob("Covariate Coefficient", size=16))
@@ -290,7 +290,7 @@ t2 <-annotate_figure(t1, right = text_grob("Early Marine", size=12, rot=270, vju
 t3 <-annotate_figure(t2, right = text_grob("Adult Marine & Spawning Migration", size=12, rot=270, hjust=-0.9, vjust=4))
 
 
-pdf(file = "Chinook/Output/Figures/MainText/Figure4_ThetaPop.pdf",   # The directory you want to save the file in
+pdf(file = "Chinook/Output/Figures/MainText/Figure4_ThetaPop95.pdf",   # The directory you want to save the file in
     width = 8.5, # The width of the plot in inches
     height = 13)
 t3

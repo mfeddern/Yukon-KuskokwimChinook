@@ -180,7 +180,7 @@ full.dat.wide.levels$sr.CV*full.dat.wide.levels$ln.sr
 
 prod.time <- ggplot(data = full.dat.wide.levels, aes(x = year, y = ln.sr, color=region)) +
  geom_ribbon(alpha=0.2,linetype = 0,aes(ymin=ln.sr-sr.CV*ln.sr, ymax=ln.sr+sr.CV*ln.sr,lwd=0))+
-  geom_point(size=0.75) +
+  geom_point(size=0.75, aes(lty=region, col=region, shape=region), cex=2) +
   geom_line() +
   scale_color_manual(values = lumina)+
   geom_hline(yintercept = 0, lty = "dotted") +
@@ -188,7 +188,8 @@ prod.time <- ggplot(data = full.dat.wide.levels, aes(x = year, y = ln.sr, color=
   scale_x_continuous(name = "Brood year", breaks = seq(1980, 2010, by = 10)) +
   expand_limits(x = c(1979,2011)) +
   scale_y_continuous(name = "Productivity Index (ln[R/S])")+
-  theme_bw()
+  theme_bw()+
+  labs(col = "Subegion",shape = "Subegion",lty = "Subegion")
 prod.time
 
 
@@ -220,9 +221,9 @@ unique(full.dat.wide.levels$pop)
 
 spawn.time <- ggplot(data = full.dat.wide.levels, aes(x = year, y = spawnth, color=region)) +
   geom_ribbon(alpha=0.2,linetype = 0,aes(ymin=spawnth-spawn.CV*spawnth, ymax=spawnth+spawn.CV*spawnth))+
-  geom_point(size=1) +
-  geom_line() +
-  scale_color_manual(values = lumina, name ='Region')+
+  geom_point(size=1.5, aes(col=region, shape=region)) +
+  geom_line(aes(lty=region)) +
+  scale_color_manual(values = c("#8D8EB1", "#3A7398","#222B4C"))+
  # geom_hline(yintercept = 0, lty = "dotted") +
   facet_wrap(.~pop,scale='free', ncol = 3) +
   scale_x_continuous(name = "Return Year", breaks = seq(1980, 2010, by = 10)) +
@@ -232,7 +233,8 @@ spawn.time <- ggplot(data = full.dat.wide.levels, aes(x = year, y = spawnth, col
             alpha = 0.3, fill = lumina[1],
             data = yearsumm.levels,
             inherit.aes = FALSE) +
-  theme_bw()
+  theme_bw()+
+  labs(col = "Subregion",shape = "Subregion",lty = "Subregion")
 spawn.time
 
 pdf(file = "Chinook/Output/Figures/Supplement/FigS1_SpawnerTimeSeries.pdf",   # The directory you want to save the file in

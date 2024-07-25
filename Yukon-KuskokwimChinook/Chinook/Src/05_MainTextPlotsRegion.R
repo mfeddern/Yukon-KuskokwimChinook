@@ -254,7 +254,7 @@ dev.off()
 
 #### Figuer 4 Theta By Watershed Plots #####
 
-npop<-length(unique(full.dat.wide.cov$pop))
+npop<-length(unique(dat$pop))
 levels <- c("Maximum daily streamflow","Daily stream temp",'Snowpack (snow-water equivalent)',
             "Median daily streamflow", "River Ice Breakup Date",
             "Sea Ice Cover",  "Summer Sea Surface Temperature",
@@ -269,17 +269,16 @@ df.levels$Covar.Name = factor(df.levels$Covar.Name,
 lumina<-nord(n = 8, palette = "lumina")
 
 thetaplot<- ggplot(data = df.levels,
-         aes(x =mean, y = reorder(pop, desc(pop)), group = region)) +
+         aes(x =mean, y = reorder(pop, desc(pop)), group = region, shape=region)) +
     facet_wrap(.~Covar.Name, ncol = 4,scales='free_x', labeller = label_wrap_gen(18)) +
     #ggtitle(str_wrap(thetas$Covar.Name, width = 15)) +
-    scale_color_manual(values = c(lumina[3],lumina[4],lumina[7]), name='Subregion')+
+    scale_color_manual(values = c(lumina[3],lumina[4],lumina[7]))+
     geom_vline(xintercept = 0, linetype = "dashed") +
     scale_y_discrete(name = "Population Unit")+
     scale_x_continuous(name = "Covariate Coefficient")+
     geom_errorbar(aes(xmin=lower.80, xmax=upper.80),width = 0, size=0.25)+
     geom_errorbar(aes(xmin=lower.50, xmax=upper.50,col=region), width = 0, size=0.75)+
     theme_bw()+
-    labs(col = "Region")+
   theme(legend.position = c(1, 0.1),
         legend.justification = c(1, 0.05),
         plot.title = element_text(hjust = 0.5, size=16),
@@ -291,14 +290,15 @@ thetaplot<- ggplot(data = df.levels,
        # axis.text.x = element_text(size = 10),
         legend.text=element_text(size=12),
         legend.title=element_text(size=14))+
-    geom_point(aes(col=region))
+    geom_point(aes(col=region, shape=region), cex=2.5)+
+  labs(col = "Subregion", shape="Subregion")
 
 t1 <-annotate_figure(thetaplot, right = text_grob("Incubation & Juvenile Rearing", size=12, rot=270, hjust=2.25, vjust=1))
 t2 <-annotate_figure(t1, right = text_grob("Early Marine", size=12, rot=270, vjust=3))
 t3 <-annotate_figure(t2, right = text_grob("Adult Marine & Spawning Migration", size=12, rot=270, hjust=-0.9, vjust=4))
 
 
-pdf(file = "Chinook/Output/Figures/MainText/Figure4_ThetaPop95.pdf",   # The directory you want to save the file in
+pdf(file = "Chinook/Output/Figures/MainText/Figure4_ThetaPop.pdf",   # The directory you want to save the file in
     width = 8.5, # The width of the plot in inches
     height = 13)
 t3
@@ -320,15 +320,14 @@ fitplot<- ggplot(data = recruits.levels,
   scale_x_continuous(name = "Brood Year")+
   geom_errorbar(aes(ymin=log(recruits)-2*rec.SDlog, ymax=log(recruits)+2*rec.SDlog),
                 width = 0, size=0.25)+
-  geom_point(aes(y=log(recruits),x=year, col=region))+
-  
+  geom_point(aes(y=log(recruits),x=year, col=region, shape=region))+
   geom_ribbon(alpha=0.2,linetype = 0,aes(ymin=log(lower.95), ymax=log(upper.95)))+
-  geom_line(aes(y=log(pred),x=year, col=region))+
+  geom_line(aes(y=log(pred),x=year, col=region, lty=region))+
   theme_bw()+  
   theme(legend.position = c(0.9, -0.025),
                      legend.justification = c(1, 0))+
-  labs(col = "Region")
-
+  labs(col = "Subegion",shape = "Subegion",lty = "Subegion")
+fitplot
 pdf(file = "Chinook/Output/Figures/Supplement/FigS18_modelfits.pdf",   # The directory you want to save the file in
     width = 8, # The width of the plot in inches
     height = 10)
@@ -354,38 +353,38 @@ covunstand <- unstand%>%select(pop, year, region, EarlySummer,
                          cdd_rear
 ) %>%
   rename("Summer Sea Surface Temperature"=EarlySummer,
-         "Median Daily Streamflow"=medq_rear,
-         "Size"=size,
-         "First Marine Winter SST"=Winter_stand,
+         "Median daily streamflow"=medq_rear,
+         "Body Size"=size,
+         "Winter Sea Surface Temperature"=Winter_stand,
          #"Age 3+ Pollock Biomass"=mean(Age_3_Biomass_stand),
          #"North Pacific Chum"=mean(chum_stand),
-         "cross-shelf wind"=uwind,
+         "Cross-shelf wind"=uwind,
          "Marine Competitors"=marine,
-         "Ice Cover Index"=ICIA,
+         "Sea Ice Cover"=ICIA,
          #"Snowpack (snow-water equivalent)" = mean_swe_rear,
          "River Ice Breakup Date"=breakup2,
-         "Maximum Daily Streamflow"=maxq_spawn,
+         "Maximum daily streamflow"=maxq_spawn,
          #"Migration CDD above 17C"=cdd17_stand,
          #"Maximum Weekly Migration Temp"= maxWeekly_migrate_stand,
          "Maximum Daily Migration Temp"=maxDaily_migrate,
-         "Daily stream temp rearing"=cdd_rear)%>%
+         "Daily stream temp"=cdd_rear)%>%
   pivot_longer(
     cols = c("Summer Sea Surface Temperature",
-             "Ice Cover Index",
+             "Sea Ice Cover",
              #   "Snowpack (snow-water equivalent)",
-             "Size",
+             "Body Size",
              # "North Pacific Chum",
-             "First Marine Winter SST",
+             "Winter Sea Surface Temperature",
              "Marine Competitors",
              #"Age 3+ Pollock Biomass",
-             "cross-shelf wind",
+             "Cross-shelf wind",
              "River Ice Breakup Date",
-             "Maximum Daily Streamflow",
-             "Median Daily Streamflow",
+             "Maximum daily streamflow",
+             "Median daily streamflow",
              #"Migration CDD above 17C",
              #"Maximum Weekly Migration Temp",
              "Maximum Daily Migration Temp",
-             "Daily stream temp rearing"),
+             "Daily stream temp"),
     names_to = "covariate",
     values_to = "value",
     values_drop_na = TRUE
@@ -406,7 +405,7 @@ residPlot <- ggplot(data = cov_lon,
   #ggtitle(thetas$Covar.Name, subtitle = thetas$Lifestage) +
   scale_color_manual(values = c(lumina[3],lumina[4],lumina[7]))+
   geom_smooth(method = "gam", 
-              formula = y ~ s(x, bs = "cs", fx = TRUE, k = 5),aes(col=region))+
+              formula = y ~ s(x, bs = "cs", fx = TRUE, k = 5),aes(col=region, lty=region))+
   #geom_vline(xintercept = 0, linetype = "dashed") +
   scale_y_continuous(name ="Productivity (Ricker Residual)" )+
   scale_x_continuous(name = "Covariate Value")+
@@ -414,7 +413,8 @@ residPlot <- ggplot(data = cov_lon,
   #ylim(c(-2,2))+
   theme(legend.position = c(0.9, 0.08),
         legend.justification = c(1, 0))+
-  labs(col = "Region")
+  labs(col = "Subregion",lty = "Subregion")
+residPlot
 
 
 pdf(file = "Chinook/Output/Figures/Supplement/FigureS21_UNSTAND_residuals.pdf",   # The directory you want to save the file in
@@ -489,7 +489,7 @@ covTS<-ggplot(data = covplot,
        # axis.text.x = element_text(size = 10),
         legend.text=element_text(size=14),
         legend.title=element_text(size=16))+
-  labs(col = "Region")
+  labs(col = "Subegion")
 covTS
 pdf(file = "Chinook/Output/Figures/MainText/Figure6_covtimeseries.pdf",   # The directory you want to save the file in
     width = 10, # The width of the plot in inches
@@ -526,10 +526,10 @@ migration_temps_plot<-ggplot(data = cov_lon,
        aes(x =value , y = residual,
            group=region)) +
  # facet_wrap(.~covariate,scales='free', ncol = 3, labeller = label_wrap_gen(18) ) +
-  geom_point(aes(col=region),alpha=0.3)+
+  geom_point(aes(col=region,shape=region),alpha=0.3)+
   #ggtitle(thetas$Covar.Name, subtitle = thetas$Lifestage) +
   scale_color_manual(values = c(lumina[3],lumina[4],lumina[7]))+
-  geom_smooth(aes(col=region))+
+  geom_smooth(aes(col=region, lty=region))+
   #geom_vline(xintercept = 0, linetype = "dashed") +
   scale_y_continuous(name ="Ricker Residual" )+
   scale_x_continuous(name = "Degrees Celsius")+
@@ -537,7 +537,7 @@ migration_temps_plot<-ggplot(data = cov_lon,
   #ylim(c(-2,2))+
   theme(legend.position = c(0.4, 0.01),
         legend.justification = c(1, 0))+
-  labs(col = "Region")
+  labs(col = "Subregion",shape = "Subregion",lty = "Subregion")
 migration_temps_plot
 
 pdf(file = "Chinook/Output/Figures/MainText/Figure5_MigrationTemp.pdf",   # The directory you want to save the file in

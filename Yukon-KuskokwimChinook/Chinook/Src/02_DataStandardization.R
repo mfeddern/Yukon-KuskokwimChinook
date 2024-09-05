@@ -718,3 +718,23 @@ yearsumm <- full.dat.wide.cov %>%
 full.dat.wide.cov %>%filter(pop=="Goodnews")
 saveRDS(full.dat.wide.cov, file = "Chinook/Output/posteriors/full.dat.wide.cov.offset.rds")
 saveRDS(yearsumm, file = "Chinook/Output/posteriors/yearsumm.rds")
+
+
+
+Dryad_Dataset<-full.dat.wide.cov%>%
+  mutate(logspawners=log(spawners), logrecruits=log(recruits) )%>%
+  select(year, pop, region, region2, logspawners, logrecruits, spawn.SDlog, rec.SDlog,
+         EarlySummer_stand, Winter_stand, marine_stand, ICIA_stand, size_stand, uwind_stand,
+         breakup2,  maxq_spawn_stand,
+         medq_rear_stand,  maxDaily_spawn_stand, maxDaily_migrate_stand, cdd_rear_stand)%>%
+  rename(Year=year, Population=pop, Subrigion=region,RiverBasin= region2, 
+        spawn.error= spawn.SDlog, rec.error=rec.SDlog,
+        SummerSST= EarlySummer_stand,WinterSST= Winter_stand,
+       MarineCompetitorsIndex= marine_stand,
+         IceConcentrationIndex=ICIA_stand, BodySize=size_stand, Uwind=uwind_stand,
+         RiverIceBreakup=breakup2, maxq_spawn= maxq_spawn_stand,
+         medq_rear=medq_rear_stand,
+         maxDaily_migrate=maxDaily_migrate_stand,cdd_rear =cdd_rear_stand)
+
+write.csv(Dryad_Dataset,"Chinook/StandardizedData_Feddernetal.csv")
+write.csv(pops_allMets,"Chinook/FreshwaterIndices_Feddernetal.csv")

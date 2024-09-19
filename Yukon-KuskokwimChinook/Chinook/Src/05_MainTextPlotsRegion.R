@@ -14,8 +14,8 @@ library(tidyr)
 
 lumina<-nord(n = 6, palette = "lumina")
 #bhfit <- readRDS("bhfit.rda")
-group.posteriors<-readRDS("Chinook/Output/posteriors/group.posteriors.rds")
-thetas<-readRDS("Chinook/Output/posteriors/thetas.posteriors.rds")
+group.posteriors<-readRDS("Chinook/Output/posteriors/group.posteriorsNOSize.rds")
+thetas<-readRDS("Chinook/Output/posteriors/thetas.posteriorsNOcomp.rds")
 parameter.posteriors<-readRDS("Chinook/Output/posteriors/parameter.posteriors.rds")
 dat<-readRDS("Chinook/Output/posteriors/full.dat.wide.cov.offset.rds")
 recruits<-readRDS("Chinook/Output/posteriors/recruits.rds")
@@ -23,7 +23,7 @@ unstand <- readRDS("Chinook/Output/posteriors/unstandcov3.rds")
 residual <- readRDS("Chinook/Output/posteriors/residualcov.rds")
 residualnc <- readRDS("Chinook/Output/posteriors/residualnc.rds")
 unlag_cov <- readRDS( "Chinook/Output/posteriors/unlagcov.rds")
-mean_cov <- readRDS( "Chinook/Output/posteriors/mean.theta.rds")
+mean_cov <- readRDS( "Chinook/Output/posteriors/mean.thetaNOcomp.rds")
 
 # Define the conditions and replacement values
 conditions <- c("Size", "Ice Cover Index")
@@ -245,7 +245,7 @@ YukonCA
 arranged <- ggarrange(Kuskokwim,YukonUS,YukonCA, widths=c(2,1.25,2.5),ncol = 3, nrow = 1)
 
 arranged
-pdf(file = "Chinook/Output/Figures/MainText/Figure3_MeanCov2.pdf",   # The directory you want to save the file in
+pdf(file = "Chinook/Output/Figures/Supplement/FigureS20_MeanCov.pdf",   # The directory you want to save the file in
     width = 14, # The width of the plot in inches
     height = 7)
 annotate_figure(arranged,bottom = text_grob("Covariate Coefficient", size=16))
@@ -407,7 +407,7 @@ residPlot <- ggplot(data = cov_lon,
   geom_smooth(method = "gam", 
               formula = y ~ s(x, bs = "cs", fx = TRUE, k = 5),aes(col=region, lty=region))+
   #geom_vline(xintercept = 0, linetype = "dashed") +
-  scale_y_continuous(name ="Productivity (Ricker Residual)" )+
+  scale_y_continuous(name ="Ricker Residuals" )+
   scale_x_continuous(name = "Covariate Value")+
   theme_bw()+
   #ylim(c(-2,2))+
@@ -523,18 +523,20 @@ levels(cov_lon$covariate) <- levels
 
 #### Figure 5 ####
 migration_temps_plot<-ggplot(data = cov_lon,
-       aes(x =value , y = residual,
+       aes(x =value,col=region, y = residual,
            group=region)) +
+  geom_smooth(aes(lty=region))+
  # facet_wrap(.~covariate,scales='free', ncol = 3, labeller = label_wrap_gen(18) ) +
-  geom_point(aes(col=region,shape=region),alpha=0.3)+
+  geom_point(aes(shape=region),alpha=0.3)+
   #ggtitle(thetas$Covar.Name, subtitle = thetas$Lifestage) +
   scale_color_manual(values = c(lumina[3],lumina[4],lumina[7]))+
-  geom_smooth(aes(col=region, lty=region))+
   #geom_vline(xintercept = 0, linetype = "dashed") +
   scale_y_continuous(name ="Ricker Residual" )+
   scale_x_continuous(name = "Degrees Celsius")+
   theme_bw()+
   #ylim(c(-2,2))+
+  guides(colour = guide_legend(override.aes = list(size = 2, alpha=1, fill=NA)),
+         lty=guide_legend())+
   theme(legend.position = c(0.4, 0.01),
         legend.justification = c(1, 0))+
   labs(col = "Subregion",shape = "Subregion",lty = "Subregion")

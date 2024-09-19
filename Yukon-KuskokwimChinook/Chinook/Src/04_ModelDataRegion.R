@@ -41,7 +41,7 @@ covariates<- full.dat.wide.cov%>%
     select(Winter_stand,
          EarlySummer_stand,
          medq_rear_stand,
-    size_stand,
+    #size_stand,
      marine_stand,
            uwind_stand,
            ICIA_stand,
@@ -63,8 +63,8 @@ n.covars<- ncol(covariates) # total number of covariates
 names.covars <- c(  'Winter Sea Surface Temperature',
                   'Summer Sea Surface Temperature',
                   'Median daily streamflow',
-                   "Body Size",
-                  "Marine Competitors",
+                  #  "Body Size",
+                 "Marine Competitors",
                    "Cross-shelf wind",
                   'Sea Ice Cover',
                 'River Ice Breakup Date',
@@ -129,9 +129,9 @@ bhfit <- stan(
 )
 
 
-saveRDS(bhfit, file = "bhfitESR.rda") # saving model bject
+saveRDS(bhfit, file = "bhfitNoSize.rda") # saving model bject
 
-bhfit <- readRDS("bhfit.rda") #reading in an already run model object
+#bhfit <- readRDS("bhfitNoSize.rda") #reading in an already run model object
 
 
 ### Reviewing model output ###
@@ -152,21 +152,14 @@ pred<-data.frame(summary(bhfit,pars = c("pred"), prob=c(0.025, 0.25,0.75, 0.975,
 
 lifestage <- c( "Marine Residence", #'Marine Food Web',
                  "Outmigration & Early Marine", #'Marine Food Web',
-                 #   "Outmigration & Early Marine", #'Marine Food Web',
                 "Juvenile Rearing",#'median daily discharge',
-                "Spawning", #"Female Size"
+                # "Spawning", #"Female Size"
                  "Marine Residence", #'Marine Food Web'
-         #   "Marine Residence", #'Marine Food Web'
          "Outmigration & Early Marine", #'Marine Food Web',
          "Outmigration & Early Marine", #'Marine Food Web',
          "Outmigration & Early Marine", #'River Ice Breakup'
-              #"Incubation", #'Maximum 5-day precipitation'
                "Incubation",#'Maximum daily streamflow',
-               #"Juvenile Rearing", #'Snowpack (snow-water equivalent)',
-             # "Incubation", #'Snowpack (snow-water equivalent)',
-             # "Juvenile Rearing",#'Average daily precipitation',
              "Adult Migration",#'Migration Maximum daily stream temperature ',
-              # "Spawning",  #'Spawing Maximum daily stream temperature ',
    "Juvenile Rearing" # "Juvenile Growth Potential
               ) 
 
@@ -176,7 +169,7 @@ lifestage <- c( "Marine Residence", #'Marine Food Web',
 
 
 #names.covars<-c("Covariate 1","Covariate 2","Covariate 3","Covariate 4",  "Covariate 5")
-n.covars<- 11
+n.covars<- 10
 #restitching data to posteriors for plots for pop effects
 df<-data.frame(NA) #empty dataframe
 df <- thetas%>% #filling it with posteriors
@@ -284,9 +277,9 @@ mean.theta<-mean.theta%>%add_row(mean.theta.rep)%>%
   rename(lower.50='lower.1',upper.50='upper.1',
 lower.80='lower',upper.80='upper' )
 #saving posteriors dataframes for plots
-saveRDS(mean.theta, file = "Chinook/Output/posteriors/mean.theta.rds")
-saveRDS(group.posteriors, file = "Chinook/Output/posteriors/group.posteriors.rds")
-saveRDS(thetas, file = "Chinook/Output/posteriors/thetas.posteriors.rds")
+saveRDS(mean.theta, file = "Chinook/Output/posteriors/mean.thetaNOSize.rds")
+saveRDS(group.posteriors, file = "Chinook/Output/posteriors/group.posteriorsNOSize.rds")
+saveRDS(thetas, file = "Chinook/Output/posteriors/thetas.posteriorsNOSize.rds")
 saveRDS(parameter.posteriors, file = "Chinook/Output/posteriors/parameter.posteriors.rds")
 saveRDS(full.dat.wide.cov, file = "Chinook/Output/posteriors/full.dat.wide.cov.rds")
 #saveRDS(gammas, file = "Chinook/Output/posteriors/gammas.rds")
